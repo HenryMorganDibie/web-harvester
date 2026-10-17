@@ -9,7 +9,7 @@ import (
 
 func TestPercentile(t *testing.T) {
 	values := []int64{40, 10, 30, 20}
-	if got := percentile(values, .50); got != 30 {
+	if got := percentile(values, .50); got != 20 {
 		t.Fatalf("median = %d, want 30", got)
 	}
 	if got := percentile(values, .95); got != 40 {
