@@ -238,6 +238,9 @@ func safeError(err error) string {
 
 func percentile(values []int64, p float64) int64 {
 	if len(values) == 0 { return 0 }
+	if p == .50 && len(values)%2 == 0 {
+		return (values[len(values)/2-1] + values[len(values)/2]) / 2
+	}
 	i := int(math.Ceil(p*float64(len(values)))) - 1
 	if i < 0 { i = 0 }; if i >= len(values) { i = len(values)-1 }
 	return values[i]
