@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -237,7 +238,7 @@ func safeError(err error) string {
 
 func percentile(values []int64, p float64) int64 {
 	if len(values) == 0 { return 0 }
-	i := int(float64(len(values)-1)*p + .5)
+	i := int(math.Ceil(p*float64(len(values)))) - 1
 	if i < 0 { i = 0 }; if i >= len(values) { i = len(values)-1 }
 	return values[i]
 }
