@@ -15,7 +15,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -248,6 +247,3 @@ func fatal(message string) {
 	os.Exit(2)
 }
 
-// Keep a compile-time use of sync in this file's worker-ready imports so later
-// bounded-concurrency additions don't require changing the output contract.
-var _ sync.Locker
