@@ -62,7 +62,9 @@ rate_min_rps: 0
 
 # Leave empty to run direct (no proxy). In production this list would be
 # populated from a proxy provider and typically hot-reloaded, not hardcoded
-# (see proxy.Pool.Reload for the runtime-reconfiguration seam).
+# (see proxy.Pool.Reload for the runtime-reconfiguration seam). To override
+# this list at runtime with one authenticated proxy, set HARVESTER_PROXY_URL.
+# Keep credentials in environment variables, never in this file.
 proxies: []
 # A proxy cools down after proxy_ban_fails failures in a row, immediately on
 # a CAPTCHA / block page, and for exactly Retry-After on a 429. Repeat
