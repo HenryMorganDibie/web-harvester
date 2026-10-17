@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -154,6 +155,11 @@ func Load(path string) (Config, error) {
 	}
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return cfg, fmt.Errorf("config: parse %s: %w", path, err)
+	}
+	// HARVESTER_PROXY_URL is a deployment-time override for a single proxy.
+	// It keeps authenticated proxy credentials out of committed YAML files.
+	if proxyURL := strings.TrimSpace(os.Getenv("HARVESTER_PROXY_URL")); proxyURL != "" {
+		cfg.Proxies = []string{proxyURL}
 	}
 	return cfg, nil
 }
