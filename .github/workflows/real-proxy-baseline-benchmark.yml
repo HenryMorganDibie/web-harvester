@@ -1,0 +1,135 @@
+name: Real Proxy Baseline Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/real-proxy-baseline-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  proxy-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require configured proxy
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          if [ -z "$HARVESTER_PROXY_URL" ]; then
+            echo "Repository secret HARVESTER_PROXY_URL is missing."
+            exit 1
+          fi
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Run 10 live requests through the configured proxy
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          cat > "$RUNNER_TEMP/proxy-benchmark.yaml" <<'YAML'
+          mode: live
+          queries:
+            - "web harvester baseline benchmark sample 01"
+            - "web harvester baseline benchmark sample 02"
+            - "web harvester baseline benchmark sample 03"
+            - "web harvester baseline benchmark sample 04"
+            - "web harvester baseline benchmark sample 05"
+            - "web harvester baseline benchmark sample 06"
+            - "web harvester baseline benchmark sample 07"
+            - "web harvester baseline benchmark sample 08"
+            - "web harvester baseline benchmark sample 09"
+            - "web harvester baseline benchmark sample 10"
+          queue_backend: memory
+          concurrency: 1
+          max_retries: 0
+          rate_per_proxy_rps: 0.2
+          rate_burst: 1
+          adaptive_rate: false
+          live_endpoint: "https://httpbin.org/html"
+          request_timeout: 20s
+          output_path: "-"
+          report_interval: 5s
+          YAML
+
+          go run ./cmd/harvester \
+            -config "$RUNNER_TEMP/proxy-benchmark.yaml" \
+            -mode live \
+            -queries "web harvester baseline benchmark sample 01,web harvester baseline benchmark sample 02,web harvester baseline benchmark sample 03,web harvester baseline benchmark sample 04,web harvester baseline benchmark sample 05,web harvester baseline benchmark sample 06,web harvester baseline benchmark sample 07,web harvester baseline benchmark sample 08,web harvester baseline benchmark sample 09,web harvester baseline benchmark sample 10" \
+            -i-have-reviewed-tos \
+            > "$RUNNER_TEMP/proxy-benchmark.jsonl"
+
+          python3 - "$RUNNER_TEMP/proxy-benchmark.jsonl" "$RUNNER_TEMP/proxy-benchmark-report.json" <<'PY'
+          import json
+          import math
+          import statistics
+          import sys
+
+          source, report_path = sys.argv[1:]
+          with open(source, encoding="utf-8") as f:
+              rows = [json.loads(line) for line in f if line.strip()]
+
+          if len(rows) != 10:
+              raise SystemExit(f"FAIL: expected 10 result records, received {len(rows)}")
+
+          latencies = []
+          for i, row in enumerate(rows, 1):
+              latency = row.get("latency_ms")
+              if not isinstance(latency, (int, float)) or latency < 0:
+                  raise SystemExit(f"FAIL: sample {i} has invalid latency")
+              if not isinstance(row.get("raw_body"), str) or not row["raw_body"]:
+                  raise SystemExit(f"FAIL: sample {i} has no response body")
+              proxy = row.get("proxy_used")
+              if not isinstance(proxy, str) or not proxy or proxy == "direct" or "@" in proxy:
+                  raise SystemExit(f"FAIL: sample {i} lacks credential-free proxy confirmation")
+              latencies.append(float(latency))
+
+          ordered = sorted(latencies)
+          p95 = ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
+          report = {
+              "benchmark": "10 sequential live requests through configured proxy",
+              "target": "https://httpbin.org/html",
+              "samples": len(rows),
+              "successful_records": len(rows),
+              "success_rate_pct": 100.0,
+              "latency_ms": {
+                  "min": min(latencies),
+                  "median": statistics.median(latencies),
+                  "p95_nearest_rank": p95,
+                  "max": max(latencies),
+                  "samples": latencies,
+              },
+              "proxy_confirmed_samples": len(rows),
+              "response_body_confirmed_samples": len(rows),
+              "proxy_credentials_or_identifiers_printed": False,
+              "note": "This measures proxy-backed HTTP acquisition consistency and latency, not Google SERP extraction quality."
+          }
+          with open(report_path, "w", encoding="utf-8") as f:
+              json.dump(report, f, indent=2)
+              f.write("\n")
+
+          print("REAL PROXY BASELINE")
+          print(f"samples={len(rows)} success_rate=100.0% proxy_confirmed={len(rows)}/10 response_bodies={len(rows)}/10")
+          print(f"latency_ms min={min(latencies):.0f} median={statistics.median(latencies):.0f} p95={p95:.0f} max={max(latencies):.0f}")
+          print("Proxy credentials, proxy identifiers, and response bodies were not printed.")
+          PY
+
+      - name: Upload sanitized benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-proxy-baseline-report
+          path: ${{ runner.temp }}/proxy-benchmark-report.json
+          if-no-files-found: error
+          retention-days: 14
