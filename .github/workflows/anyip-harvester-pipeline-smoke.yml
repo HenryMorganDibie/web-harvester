@@ -39,7 +39,11 @@ jobs:
           cat > "$RUNNER_TEMP/harvester-smoke.yaml" <<'YAML'
           mode: live
           queries:
-            - "web harvester proxy pipeline smoke test"
+            - "web harvester proxy pipeline smoke test 1"
+            - "web harvester proxy pipeline smoke test 2"
+            - "web harvester proxy pipeline smoke test 3"
+            - "web harvester proxy pipeline smoke test 4"
+            - "web harvester proxy pipeline smoke test 5"
           queue_backend: memory
           concurrency: 1
           max_retries: 0
@@ -55,7 +59,7 @@ jobs:
           go run ./cmd/harvester \
             -config "$RUNNER_TEMP/harvester-smoke.yaml" \
             -mode live \
-            -queries "web harvester proxy pipeline smoke test" \
+            -queries "web harvester proxy pipeline smoke test 1,web harvester proxy pipeline smoke test 2,web harvester proxy pipeline smoke test 3,web harvester proxy pipeline smoke test 4,web harvester proxy pipeline smoke test 5" \
             -i-have-reviewed-tos \
             > "$RUNNER_TEMP/harvester-results.jsonl"
 
@@ -64,6 +68,21 @@ jobs:
             exit 1
           fi
 
-          jq -e -s 'length > 0' "$RUNNER_TEMP/harvester-results.jsonl" >/dev/null
-          echo "Pipeline smoke test emitted $(wc -l < "$RUNNER_TEMP/harvester-results.jsonl" | tr -d ' ') JSONL result record(s)."
+          # httpbin.org/html is a transport smoke-test page, not a SERP.
+          # The parser should flag missing organic results and retain the raw
+          # body for calibration review. Validate schema without printing data.
+          jq -e -s '
+            length == 5 and
+            all(.[]; 
+              (.query | (type == "string" and length > 0)) and
+              (.fetched_at | (type == "string" and length > 0)) and
+              (.latency_ms | (type == "number" and . >= 0)) and
+              (.proxy_used | (type == "string" and length > 0 and (contains("@") | not))) and
+              (.organic | type == "array") and
+              (.calibration.missing_blocks | (index("organic_results") != null)) and
+              (.raw_body | (type == "string" and length > 0))
+            )
+          ' "$RUNNER_TEMP/harvester-results.jsonl" >/dev/null
+
+          echo "Pipeline smoke test validated 5 JSONL records, metadata, calibration flags, raw-body capture, and credential-free proxy identifiers."
           echo "Result bodies and proxy credentials are not printed or uploaded."
