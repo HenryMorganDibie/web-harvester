@@ -1,0 +1,63 @@
+name: Live Crawl Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-crawl-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit tests (including retry and deduplication coverage)
+        run: go test ./...
+
+      - name: Crawl a permitted public test page once
+        run: |
+          # Duplicate start URLs deliberately test deduplication. Depth zero
+          # and a one-page budget keep the live test small and polite.
+          go run ./cmd/crawl \
+            -url "https://example.com/,https://example.com/" \
+            -depth 0 \
+            -max-pages 5 \
+            -run-id live-crawl-smoke \
+            -i-have-reviewed-tos \
+            > "$RUNNER_TEMP/crawl-results.jsonl"
+
+          if [ ! -s "$RUNNER_TEMP/crawl-results.jsonl" ]; then
+            echo "Crawler completed without writing a JSONL page record."
+            exit 1
+          fi
+
+          # Check only metadata and extracted text; never print page bodies.
+          jq -e -s '
+            if length != 1 then
+              error("expected one page after duplicate URL deduplication; got \(length)")
+            elif .[0].url != "https://example.com/" then
+              error("unexpected page URL")
+            elif .[0].status_code != 200 then
+              error("expected HTTP 200")
+            elif .[0].title != "Example Domain" then
+              error("expected extracted title")
+            elif ((.[0].text // "") | length) == 0 then
+              error("expected non-empty extracted visible text")
+            elif .[0].run_id != "live-crawl-smoke" then
+              error("run_id was not persisted")
+            else
+              true
+            end
+          ' "$RUNNER_TEMP/crawl-results.jsonl"
+
+          echo "Live crawl smoke test passed: one unique URL, HTTP 200, title/text extraction, and JSONL persistence."
+          echo "Retry/failover behavior is covered by the unit-test suite; this live test sends only one page request."
