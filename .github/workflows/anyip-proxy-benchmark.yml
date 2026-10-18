@@ -32,7 +32,7 @@ jobs:
 
       - name: Require proxy secret
         env:
-          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
         run: |
           if [ -z "$HARVESTER_PROXY_URL" ]; then
             echo "Repository secret HARVESTER_PROXY_URL is missing."
@@ -44,8 +44,8 @@ jobs:
 
       - name: Benchmark proxy connectivity
         env:
-          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
-          REQUESTS: \${{ inputs.requests }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          REQUESTS: ${{ inputs.requests }}
         run: |
           go run ./cmd/proxybench \
             -profile trial-baseline \
