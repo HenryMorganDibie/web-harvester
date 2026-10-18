@@ -3,8 +3,26 @@ name: anyIP Proxy Benchmark
 on:
   workflow_dispatch:
     inputs:
+      profile:
+        description: "Provider profile already configured by the operator"
+        required: true
+        type: choice
+        options:
+          - rotating
+          - sticky
+          - state-targeted
+      proxy_secret_name:
+        description: "GitHub Actions secret containing the configured proxy URL"
+        required: true
+        default: HARVESTER_PROXY_URL
+        type: string
+      expected_state:
+        description: "Expected US state/region for state-targeted trials; leave blank otherwise"
+        required: false
+        default: ""
+        type: string
       requests:
-        description: "Sequential samples (5–20 recommended for trial)"
+        description: "Sequential samples (start small; 5–20 recommended)"
         required: true
         default: "5"
         type: choice
@@ -21,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out main
+      - name: Check out selected branch
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -30,33 +48,56 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Require proxy secret
+      - name: Validate benchmark inputs and require proxy secret
         env:
-          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          HARVESTER_PROXY_URL: ${{ secrets[inputs.proxy_secret_name] }}
+          PROFILE: ${{ inputs.profile }}
+          EXPECTED_STATE: ${{ inputs.expected_state }}
         run: |
           if [ -z "$HARVESTER_PROXY_URL" ]; then
-            echo "Repository secret HARVESTER_PROXY_URL is missing."
+            echo "The selected GitHub Actions secret is missing or empty."
+            exit 1
+          fi
+          if [ "$PROFILE" = "state-targeted" ] && [ -z "$EXPECTED_STATE" ]; then
+            echo "expected_state is required for state-targeted trials."
             exit 1
           fi
 
-      - name: Run tests
-        run: go test ./...
+      - name: Run static analysis and tests
+        run: |
+          go vet ./...
+          go test ./...
 
-      - name: Benchmark proxy connectivity
+      - name: Run low-volume live proxy benchmark
         env:
-          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          HARVESTER_PROXY_URL: ${{ secrets[inputs.proxy_secret_name] }}
+          PROFILE: ${{ inputs.profile }}
+          EXPECTED_STATE: ${{ inputs.expected_state }}
           REQUESTS: ${{ inputs.requests }}
         run: |
+          expected_args=()
+          if [ -n "$EXPECTED_STATE" ]; then
+            expected_args=(-expected-state "$EXPECTED_STATE")
+          fi
+
           go run ./cmd/proxybench \
-            -profile trial-baseline \
+            -profile "$PROFILE" \
+            "${expected_args[@]}" \
             -requests "$REQUESTS" \
             -delay 1s \
             -timeout 15s \
             -target-url "https://httpbin.org/status/200" \
             -geo-url "https://ipinfo.io/json" \
-            -out "$RUNNER_TEMP/anyip-benchmark.jsonl" \
-            2> "$RUNNER_TEMP/anyip-summary.json"
+            -out "$RUNNER_TEMP/proxy-benchmark.jsonl" \
+            2> "$RUNNER_TEMP/proxy-benchmark-summary.json"
 
-          echo "Benchmark finished. Summary (no observed IPs or credentials):"
-          cat "$RUNNER_TEMP/anyip-summary.json"
-          echo "Per-sample records are kept only in the ephemeral runner and are not uploaded."
+          echo "Aggregate summary (sample-level IPs and proxy identifiers are not uploaded):"
+          cat "$RUNNER_TEMP/proxy-benchmark-summary.json"
+
+      - name: Upload aggregate-only report
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-benchmark-${{ inputs.profile }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/proxy-benchmark-summary.json
+          if-no-files-found: error
+          retention-days: 14
