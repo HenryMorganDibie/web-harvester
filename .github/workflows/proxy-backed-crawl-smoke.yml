@@ -1,0 +1,102 @@
+name: Proxy-Backed Crawl Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proxy-crawl-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require proxy secret
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          if [ -z "$HARVESTER_PROXY_URL" ]; then
+            echo "Repository secret HARVESTER_PROXY_URL is missing."
+            exit 1
+          fi
+
+      - name: Run complete Go test suite
+        run: go test ./...
+
+      - name: Crawl one permitted page through the configured proxy
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          # JSON is valid YAML; Python's standard library safely escapes the
+          # secret instead of interpolating credentials into a shell/YAML string.
+          python3 - <<'PY' > "$RUNNER_TEMP/proxy-crawl-smoke.json"
+          import json
+          import os
+
+          config = {
+              "proxies": [os.environ["HARVESTER_PROXY_URL"]],
+              "concurrency": 1,
+              "max_retries": 1,
+              "request_timeout": "15s",
+              "report_interval": "1s",
+              "targets": [{
+                  "name": "proxy-crawl-smoke",
+                  "start_urls": ["https://example.com/"],
+                  "max_depth": 0,
+                  "max_pages": 1,
+                  "render": "http",
+                  "respect_robots": True,
+              }],
+          }
+          print(json.dumps(config))
+          PY
+
+          go run ./cmd/crawl \
+            -config "$RUNNER_TEMP/proxy-crawl-smoke.json" \
+            -target proxy-crawl-smoke \
+            -run-id proxy-crawl-smoke \
+            -i-have-reviewed-tos \
+            > "$RUNNER_TEMP/proxy-crawl-results.jsonl"
+
+          if [ ! -s "$RUNNER_TEMP/proxy-crawl-results.jsonl" ]; then
+            echo "Proxy-backed crawl completed without writing a JSONL page record."
+            exit 1
+          fi
+
+          # Validate the page and proxy metadata without printing the proxy ID,
+          # URL, credentials, or response body.
+          jq -e -s '
+            if length != 1 then
+              error("expected one page record; got \(length)")
+            elif .[0].url != "https://example.com/" then
+              error("unexpected page URL")
+            elif .[0].status_code != 200 then
+              error("expected HTTP 200")
+            elif .[0].title != "Example Domain" then
+              error("expected extracted title")
+            elif ((.[0].text // "") | length) == 0 then
+              error("expected non-empty extracted visible text")
+            elif .[0].run_id != "proxy-crawl-smoke" then
+              error("run_id was not persisted")
+            elif ((.[0].proxy_used // "") | length) == 0 then
+              error("proxy metadata is missing")
+            elif (.[0].proxy_used | contains("@")) then
+              error("proxy metadata contains userinfo")
+            elif .[0].proxy_used == "direct" then
+              error("crawler used direct egress instead of the configured proxy")
+            else
+              true
+            end
+          ' "$RUNNER_TEMP/proxy-crawl-results.jsonl"
+
+          echo "Proxy-backed crawl smoke test passed: proxy metadata, HTTP 200, title/text extraction, and JSONL persistence validated."
+          echo "Proxy credentials, proxy identifiers, and response bodies are not printed or uploaded."
