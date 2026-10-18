@@ -57,7 +57,9 @@ type Counters struct {
 // IncSuccess records one successful fetch+parse.
 func (c *Counters) IncSuccess() { atomic.AddUint64(&c.Success, 1) }
 
-// IncFailure records one failed fetch attempt.
+// IncFailure records one failed HTTP/fetch attempt across all pool users.
+// This includes auxiliary requests such as robots.txt; it does not mean a
+// crawl page failed. Use crawl.Stats for page-level outcomes.
 func (c *Counters) IncFailure() { atomic.AddUint64(&c.Failure, 1) }
 
 // IncDropped records one job that never succeeded — either it exhausted all
