@@ -1,59 +1,76 @@
-# anyIP benchmark runbook
+# Proxy quality benchmark runbook
 
-This benchmark is designed around the three measurements Lukas requested:
+This benchmark covers the three measurements requested for Web Harvester:
 
-1. **US state-level results:** record the observed exit-IP region/country and compare it with the state requested in the provider's supported configuration.
-2. **Sticky vs rotating:** run separate, clearly labelled trials and compare target latency and usable HTTP responses.
-3. **Failure behavior:** preserve per-sample status/error classes and target latency so timeouts, proxy-connect failures, HTTP 429s, and server errors are visible.
+1. **US state-level success:** compare a vendor-configured state-targeted proxy profile with the state observed by the IP geolocation probe. Report each state's sample size, successful target responses, and state-match rate separately.
+2. **Sticky vs. rotating:** compare the same authorized target under separately configured sticky and rotating proxy profiles, holding request count, timeout, delay, runner region, and target constant.
+3. **Failure/retry behavior:** distinguish first-attempt outcomes from eventual job outcomes, retry count, recovery time, and exhausted retries. Use deterministic local fixtures for injected failures; do not induce errors against a third-party site.
 
-The runner is intentionally provider-agnostic. It does not guess anyIP's username parameters, sticky-session syntax, or state-targeting options. Use Lukas's workload-specific recommendation doc or current anyIP dashboard/docs to configure each profile before running it.
+The runner is provider-agnostic. It deliberately does not guess AnyIP username parameters, sticky-session syntax, or state-targeting options. Configure the proxy URL using the provider's current documentation/dashboard before each profile run. The profile label is a report label; it does not itself change provider behavior.
 
 ## Safety and prerequisites
 
 - Rotate any proxy credentials previously pasted into chats or tickets. Do not commit credentials or put them in command-line arguments.
-- Use a replacement proxy URL in the local `HARVESTER_PROXY_URL` environment variable. The runner refuses to send target traffic directly when this variable is absent.
+- Store each configured proxy URL in a GitHub Actions secret. The workflow defaults to `HARVESTER_PROXY_URL`, and the `proxy_secret_name` input can select another secret by name.
+- A profile secret must actually be configured for the named behavior. For example, a secret called `HARVESTER_PROXY_URL_STICKY` should contain a vendor-configured sticky-session endpoint; renaming a rotating endpoint is not a sticky-session test.
 - Choose a target you are authorized to access. The default target, `https://httpbin.org/status/200`, is a small connectivity check, not a representative production target.
-- The default geo probe is `https://ipinfo.io/json`. This is a separate request through the same configured proxy. With rotating sessions, its observed state may not be the exact egress state used by the subsequent target request.
-- Start with five samples per profile. Check the anyIP dashboard's bandwidth usage before expanding. Do not use this benchmark to bypass authentication, paywalls, CAPTCHAs, or access controls.
+- The default geo probe, `https://ipinfo.io/json`, is a separate request through the same configured proxy. With rotating sessions, its observed state may not be the exact egress state used by the subsequent target request. Geolocation is an estimate, not ground truth.
+- Start with five samples per profile and check provider bandwidth/usage before expanding. Do not use this benchmark to bypass authentication, paywalls, CAPTCHAs, or access controls.
 
-## Build
+## Run the live proxy benchmark in GitHub Actions
+
+Open **Actions → anyIP Proxy Benchmark → Run workflow** on the branch containing this workflow. Choose:
+
+- `profile`: `rotating`, `sticky`, or `state-targeted`
+- `proxy_secret_name`: the name of the GitHub Actions secret containing that provider-configured proxy URL
+- `expected_state`: required for state-targeted trials (for example, `Texas`)
+- `requests`: start at 5; use 10 or 20 only after the smoke test succeeds
+
+The workflow runs `go vet ./...` and `go test ./...` before sending low-volume live traffic. It uploads only the aggregate JSON summary for 14 days. Per-sample JSONL records, including observed IP addresses, remain on the ephemeral runner and are not uploaded. The workflow fails closed if the selected secret is missing or empty.
+
+For state coverage, configure a provider-supported state-targeted profile in the secret, then run a trial for each supported state you need to evaluate. Do not infer coverage from the profile label. Keep a results ledger with state, profile/secret name (not secret value), sample count, target successes, state-match count, median/p95 latency, and run URL. Compare only states that the provider actually supports and record the geolocation source used.
+
+## Local runner
 
 From the repository root:
 
 ```bash
 go test ./...
 go build -o bin/proxybench ./cmd/proxybench
-```
 
-## Run a controlled profile
-
-```bash
 export HARVESTER_PROXY_URL='http://REPLACEMENT_USER:URL_ENCODED_PASSWORD@portal.anyip.io:1080'
 
-# Configure the provider's rotating profile using the vendor-documented method first.
 ./bin/proxybench -profile rotating -requests 5 -delay 1s -out results-rotating.jsonl
-
-# Reconfigure the provider for a sticky session, using the documented method.
 ./bin/proxybench -profile sticky -requests 5 -delay 1s -out results-sticky.jsonl
-
-# For each supported state-targeted profile, configure the state with the vendor
-# and compare its observed exit region; never assume a label forces a state.
 ./bin/proxybench -profile state-targeted-TX -expected-state Texas -requests 5 -delay 1s -out results-state-TX.jsonl
 ```
 
-Do not run the examples unchanged with placeholder credentials. Keep output files local; they contain observed IP addresses and should not be committed or publicly shared without review.
+Do not run examples unchanged with placeholder credentials. Keep local output files private; they contain observed IP addresses.
 
-Each JSONL row records a UTC timestamp, profile label, target hostname/status/latency, geo-probe status/latency, observed IP/region/country, optional expected-state match, and an error category. A JSON summary is printed to stderr with target success rate, median/p95 latency, observed states, and state matches. A target response is counted successful only when its final HTTP status is 2xx. The geo probe is a separate request and does not prove the target request used the same exit IP under rotating behavior.
+Each JSONL row records a UTC timestamp, profile label, target hostname/status/latency, geo-probe status/latency, observed IP/region/country, optional expected-state match, and an error category. The summary includes target success rate, median/p95 latency, observed states, and state matches. Target success currently means a 2xx status, not that the body contains useful scraped data. A production crawl should also validate result quality.
 
-## Compare profiles fairly
+## Sticky vs. rotating protocol
 
-- Keep the target URL, sample count, timeout, delay, and machine constant between runs.
-- Run at least three rounds per profile if the initial five-sample smoke test is healthy. Report sample sizes; do not claim state coverage from profile labels alone.
-- Report target success rate and latency separately from geo-state match rate. Treat geolocation as an estimate, not ground truth.
-- Track 429, 4xx, 5xx, proxy-connect, DNS, TLS, and timeout outcomes separately. HTTP 200 alone is not sufficient for a production crawl: inspect the response body and whether it contains useful data.
-- Compare results with the anyIP dashboard's usage/bandwidth figures. This tool does not estimate cost or prove billed bytes.
-- This runner records each attempt but does not implement retries. Test the Web Harvester's retry/backoff behavior separately against a controlled, authorized endpoint that can deliberately return 429/5xx or delay responses; don't manufacture failures against a third-party site.
+1. Use the same target, runner, timeout, request count, delay, and approximate time window.
+2. Run an initial 5-sample smoke test for each profile.
+3. If healthy, run at least three rounds of 20 samples per profile; keep the raw per-sample files private.
+4. Compare success rate, median and p95 latency, state distribution, and provider-reported bandwidth. Record the sample sizes and run links.
+5. If the geo probe's egress changes between requests, describe the state-match metric as an observed estimate; do not claim the target request's exact exit IP from the separate probe.
 
-## Current evidence status
+## Failure and retry protocol
 
-No live anyIP measurements are embedded in this repository. Until the runner is executed with replacement credentials and vendor-supported profile settings, success rates, state coverage, latency, and bandwidth remain **unmeasured**.
+The live proxy runner records each request attempt but does not itself retry. Retry behavior belongs to the Web Harvester worker pool and must be tested separately. The existing suite includes `TestPool_HonorsRateLimitRetryAfter`, which injects a single 429 with a short `Retry-After` and verifies a successful retry after the wait.
+
+For a fuller failure matrix, use the local integration fixture proxy (no third-party traffic) to exercise:
+- one transient 429 with `Retry-After`, followed by success;
+- repeated 5xx/network errors up to the configured retry limit;
+- a timeout followed by recovery;
+- a persistent block/challenge that should cool the proxy and stop retrying that same egress;
+- all proxies cooling, followed by recovery when the earliest cooldown expires;
+- exhausted retries and final job accounting, including no duplicate sink writes.
+
+For each case, capture attempts, final outcome, elapsed recovery time, cooldown/failover decisions, and dropped/exhausted job count. A deterministic fixture result is evidence of retry logic, not a measurement of real-provider reliability. Do not manufacture failures against Google or another third-party site.
+
+## Evidence status
+
+Repository code already implements proxy rotation, health tracking, escalating cooldowns, `Retry-After` handling, and worker retries. The live proxy benchmark can measure connectivity/latency/geolocation, but a profile label alone does not enable sticky sessions or state targeting. Real state-level coverage and sticky-vs-rotating performance remain unmeasured until the workflow is run with correctly configured provider profiles. Provider bandwidth/cost must be reconciled against the provider dashboard; this runner does not prove billed bytes.
