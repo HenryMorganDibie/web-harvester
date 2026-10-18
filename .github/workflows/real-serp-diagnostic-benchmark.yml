@@ -1,0 +1,68 @@
+name: Real SERP Diagnostic Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/real-serp-diagnostic-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  serp-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run static analysis and unit tests
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Run low-volume live Google access diagnostic and provider smoke test
+        env:
+          HARVESTER_LIVE: "true"
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          PROVIDER_BASE_URL: ${{ vars.PROVIDER_BASE_URL }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/serp-diagnostic"
+          status=0
+          go test ./tests/live/... -run 'GoogleDirect|Provider' -count=1 -v \
+            2>&1 | tee "$RUNNER_TEMP/serp-diagnostic/live-test.log" || status=$?
+          if grep -q 'set SERPAPI_KEY' "$RUNNER_TEMP/serp-diagnostic/live-test.log"; then
+            echo "Provider test skipped: repository secret SERPAPI_KEY is not configured." \
+              | tee "$RUNNER_TEMP/serp-diagnostic/provider-status.txt"
+          elif grep -q 'TestProvider_RealKeySmokeTest.*PASS\|got [0-9][0-9]* organic results from a real provider response' "$RUNNER_TEMP/serp-diagnostic/live-test.log"; then
+            echo "Provider smoke test ran with a real API key; inspect logs for parsed organic results." \
+              | tee "$RUNNER_TEMP/serp-diagnostic/provider-status.txt"
+          else
+            echo "Provider smoke test status was not confirmed; inspect live-test.log." \
+              | tee "$RUNNER_TEMP/serp-diagnostic/provider-status.txt"
+          fi
+          echo "exit_code=$status" > "$RUNNER_TEMP/serp-diagnostic/exit-status.txt"
+          # The live Google diagnostic classifies the observed outcome and
+          # does not bypass blocks. Preserve the test exit status for review.
+          exit "$status"
+
+      - name: Upload sanitized diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-serp-diagnostic-report
+          path: |
+            ${{ runner.temp }}/serp-diagnostic/live-test.log
+            ${{ runner.temp }}/serp-diagnostic/provider-status.txt
+            ${{ runner.temp }}/serp-diagnostic/exit-status.txt
+          if-no-files-found: warn
+          retention-days: 14
