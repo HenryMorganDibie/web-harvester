@@ -6,20 +6,20 @@ This benchmark covers the three measurements requested for Web Harvester:
 2. **Sticky vs. rotating:** compare the same authorized target under separately configured sticky and rotating proxy profiles, holding request count, timeout, delay, runner region, and target constant.
 3. **Failure/retry behavior:** distinguish first-attempt outcomes from eventual job outcomes, retry count, recovery time, and exhausted retries. Use deterministic local fixtures for injected failures; do not induce errors against a third-party site.
 
-The runner is provider-agnostic. It deliberately does not guess AnyIP username parameters, sticky-session syntax, or state-targeting options. Configure the proxy URL using the provider's current documentation/dashboard before each profile run. The profile label is a report label; it does not itself change provider behavior.
+The benchmark uses AnyIP's documented username parameters to configure the selected profile from the existing `HARVESTER_PROXY_URL` secret. `rotating` removes any existing `session_` parameter; `sticky` adds a per-run `session_` ID; `state-targeted` replaces country/region parameters with `country_US,region_<state-slug>`. This matches AnyIP's published syntax for sessions and region targeting. The live run must still confirm the account supports the requested state and that the observed egress matches.
 
 ## Safety and prerequisites
 
 - Rotate any proxy credentials previously pasted into chats or tickets. Do not commit credentials or put them in command-line arguments.
 - Store each configured proxy URL in a GitHub Actions secret. The workflow defaults to `HARVESTER_PROXY_URL`, and the `proxy_secret_name` input can select another secret by name.
-- A profile secret must actually be configured for the named behavior. For example, a secret called `HARVESTER_PROXY_URL_STICKY` should contain a vendor-configured sticky-session endpoint; renaming a rotating endpoint is not a sticky-session test.
+- The workflow can derive the profile from the single AnyIP username in `HARVESTER_PROXY_URL`; it does not require separate sticky/rotating secrets. It requires username/password proxy authentication to add AnyIP parameters. IP-whitelist-only proxy URLs cannot be rewritten by this runner.
 - Choose a target you are authorized to access. The default target, `https://httpbin.org/status/200`, is a small connectivity check, not a representative production target.
 - The default geo probe, `https://ipinfo.io/json`, is a separate request through the same configured proxy. With rotating sessions, its observed state may not be the exact egress state used by the subsequent target request. Geolocation is an estimate, not ground truth.
 - Start with five samples per profile and check provider bandwidth/usage before expanding. Do not use this benchmark to bypass authentication, paywalls, CAPTCHAs, or access controls.
 
 ## Run the live proxy benchmark in GitHub Actions
 
-Open **Actions → anyIP Proxy Benchmark → Run workflow** on the branch containing this workflow. Choose:
+Open **Actions → anyIP Proxy Benchmark → Run workflow** on `main`. Choose:
 
 - `profile`: `rotating`, `sticky`, or `state-targeted`
 - `proxy_secret_name`: the name of the GitHub Actions secret containing that provider-configured proxy URL
@@ -28,7 +28,7 @@ Open **Actions → anyIP Proxy Benchmark → Run workflow** on the branch contai
 
 The workflow runs `go vet ./...` and `go test ./...` before sending low-volume live traffic. It uploads only the aggregate JSON summary for 14 days. Per-sample JSONL records, including observed IP addresses, remain on the ephemeral runner and are not uploaded. The workflow fails closed if the selected secret is missing or empty.
 
-For state coverage, configure a provider-supported state-targeted profile in the secret, then run a trial for each supported state you need to evaluate. Do not infer coverage from the profile label. Keep a results ledger with state, profile/secret name (not secret value), sample count, target successes, state-match count, median/p95 latency, and run URL. Compare only states that the provider actually supports and record the geolocation source used.
+For state coverage, select `state-targeted` and enter a US state name such as `Texas`; the runner adds `country_US,region_texas` to the AnyIP username. AnyIP documents the `region_[name]` format and exposes supported region names through its region API. Do not infer coverage from the profile label. Keep a results ledger with state, sample count, target successes, state-match count, median/p95 latency, and run URL. Compare only states supported by the provider and record the geolocation source used.
 
 ## Local runner
 
@@ -73,4 +73,4 @@ For each case, capture attempts, final outcome, elapsed recovery time, cooldown/
 
 ## Evidence status
 
-Repository code already implements proxy rotation, health tracking, escalating cooldowns, `Retry-After` handling, and worker retries. The live proxy benchmark can measure connectivity/latency/geolocation, but a profile label alone does not enable sticky sessions or state targeting. Real state-level coverage and sticky-vs-rotating performance remain unmeasured until the workflow is run with correctly configured provider profiles. Provider bandwidth/cost must be reconciled against the provider dashboard; this runner does not prove billed bytes.
+Repository code already implements proxy rotation, health tracking, escalating cooldowns, `Retry-After` handling, and worker retries. The benchmark now configures AnyIP's documented rotating, sticky, and US-region username parameters from the one existing secret. Live sticky-vs-rotating performance and state-level success rates remain unmeasured until these workflow profiles run successfully. Provider bandwidth/cost must be reconciled against the provider dashboard; this runner does not prove billed bytes.
