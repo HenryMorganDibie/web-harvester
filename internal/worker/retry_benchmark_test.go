@@ -37,8 +37,6 @@ func (f *retrySequenceFetcher) Fetch(ctx context.Context, req fetcher.Request) (
 }
 
 func retryBenchmarkPool(f fetcher.Fetcher, counters *metrics.Counters, sink *countingSink, retries int) *Pool {
-	body := []byte(`<html><body><div class="serp-organic-results"><div class="organic-result" data-position="1"><a class="organic-link" href="https://example.com/1"><span class="organic-title">result</span></a><div class="organic-snippet">snippet</div></div></div></body></html>`)
-	_ = body
 	return &Pool{
 		Concurrency: 1,
 		MaxRetries:  retries,
