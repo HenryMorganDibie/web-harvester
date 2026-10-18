@@ -1,0 +1,62 @@
+name: anyIP Proxy Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: "Sequential samples (5–20 recommended for trial)"
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "20"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require proxy secret
+        env:
+          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          if [ -z "$HARVESTER_PROXY_URL" ]; then
+            echo "Repository secret HARVESTER_PROXY_URL is missing."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Benchmark proxy connectivity
+        env:
+          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+          REQUESTS: \${{ inputs.requests }}
+        run: |
+          go run ./cmd/proxybench \
+            -profile trial-baseline \
+            -requests "$REQUESTS" \
+            -delay 1s \
+            -timeout 15s \
+            -target-url "https://httpbin.org/status/200" \
+            -geo-url "https://ipinfo.io/json" \
+            -out "$RUNNER_TEMP/anyip-benchmark.jsonl" \
+            2> "$RUNNER_TEMP/anyip-summary.json"
+
+          echo "Benchmark finished. Summary (no observed IPs or credentials):"
+          cat "$RUNNER_TEMP/anyip-summary.json"
+          echo "Per-sample records are kept only in the ephemeral runner and are not uploaded."
