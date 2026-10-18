@@ -68,20 +68,38 @@ jobs:
             exit 1
           fi
 
-          # httpbin.org/html is a transport smoke-test page, not a SERP.
-          # The parser should flag missing organic results and retain the raw
-          # body for calibration review. Validate schema without printing data.
+          # Emit only validation diagnostics, never result bodies or proxy identifiers.
           jq -e -s '
-            length == 5 and
-            all(.[]; 
+            def valid:
               (.query | (type == "string" and length > 0)) and
               (.fetched_at | (type == "string" and length > 0)) and
               (.latency_ms | (type == "number" and . >= 0)) and
               (.proxy_used | (type == "string" and length > 0 and (contains("@") | not))) and
               (.organic | type == "array") and
-              (.calibration.missing_blocks | (index("organic_results") != null)) and
-              (.raw_body | (type == "string" and length > 0))
-            )
+              (.calibration.missing_blocks | (type == "array" and index("organic_results") != null)) and
+              (.raw_body | (type == "string" and length > 0));
+            if length != 5 then
+              error("expected 5 JSONL records; got \(length)")
+            elif all(.[]; valid) then
+              true
+            else
+              "Validation diagnostics (values omitted):",
+              (to_entries[] |
+                {
+                  record: (.key + 1),
+                  query_present: ((.value.query | type == "string") and (.value.query | length > 0)),
+                  fetched_at_type: (.value.fetched_at | type),
+                  latency_ms_type: (.value.latency_ms | type),
+                  proxy_used_present: ((.value.proxy_used | type == "string") and (.value.proxy_used | length > 0)),
+                  proxy_used_contains_at: ((.value.proxy_used // "") | contains("@")),
+                  organic_type: (.value.organic | type),
+                  calibration_missing_blocks_type: (.value.calibration.missing_blocks | type),
+                  expected_calibration_flag: ((.value.calibration.missing_blocks // []) | (type == "array" and index("organic_results") != null)),
+                  raw_body_type: (.value.raw_body | type),
+                  raw_body_nonempty: ((.value.raw_body | type == "string") and (.value.raw_body | length > 0))
+                }),
+              error("one or more result records failed schema validation")
+            end
           ' "$RUNNER_TEMP/harvester-results.jsonl" >/dev/null
 
           echo "Pipeline smoke test validated 5 JSONL records, metadata, calibration flags, raw-body capture, and credential-free proxy identifiers."
