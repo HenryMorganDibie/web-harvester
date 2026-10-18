@@ -59,7 +59,7 @@ Each JSONL row records a UTC timestamp, profile label, target hostname/status/la
 
 ## Failure and retry protocol
 
-The live proxy runner records each request attempt but does not itself retry. Retry behavior belongs to the Web Harvester worker pool and must be tested separately. The existing suite includes `TestPool_HonorsRateLimitRetryAfter`, which injects a single 429 with a short `Retry-After` and verifies a successful retry after the wait.
+The live proxy runner records each request attempt but does not itself retry. Retry behavior belongs to the Web Harvester worker pool and must be tested separately. The existing suite includes `TestPool_HonorsRateLimitRetryAfter`, plus `TestRetryBenchmark_TransientFailuresRecoverWithinBudget` and `TestRetryBenchmark_ExhaustedRetriesDropExactlyOnce`. The latter two inject deterministic transient network failures locally and verify recovery within the retry budget, retry counts, exhausted-job accounting, and exactly-once/no sink writes.
 
 For a fuller failure matrix, use the local integration fixture proxy (no third-party traffic) to exercise:
 - one transient 429 with `Retry-After`, followed by success;
