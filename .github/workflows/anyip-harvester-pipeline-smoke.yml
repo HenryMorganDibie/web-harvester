@@ -22,7 +22,7 @@ jobs:
 
       - name: Require proxy secret
         env:
-          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
         run: |
           if [ -z "$HARVESTER_PROXY_URL" ]; then
             echo "Repository secret HARVESTER_PROXY_URL is missing."
@@ -34,7 +34,7 @@ jobs:
 
       - name: Run one live job through the full pipeline
         env:
-          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
         run: |
           cat > "$RUNNER_TEMP/harvester-smoke.yaml" <<'YAML'
           mode: live
