@@ -20,6 +20,7 @@ package proxy
 
 import (
 	"errors"
+	"net/url"
 	"math/rand"
 	"sync"
 	"time"
@@ -98,6 +99,22 @@ func (p *Proxy) Key() string {
 		return "direct"
 	}
 	return p.URL
+}
+
+// DisplayID returns a credential-free identifier suitable for result records.
+// Keep Key() for internal rate-limit and health bookkeeping; never serialize it.
+func (p *Proxy) DisplayID() string {
+	if p.URL == "" {
+		return "direct"
+	}
+	u, err := url.Parse(p.URL)
+	if err != nil || u.Host == "" {
+		return "configured-proxy"
+	}
+	if u.Scheme == "" {
+		return u.Host
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 func (p *Proxy) isBanned() bool {
