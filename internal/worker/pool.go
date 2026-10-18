@@ -117,7 +117,7 @@ func (p *Pool) process(ctx context.Context, job queue.Job) {
 			return err
 		}
 		r.LatencyMS = resp.Latency.Milliseconds()
-		r.ProxyUsed = px.Key()
+		r.ProxyUsed = px.DisplayID()
 		r.FetchedAt = time.Now().UTC()
 		r.RunID = job.RunID
 		r.Locale = job.Locale
@@ -208,7 +208,7 @@ func (p *Pool) Acquire(ctx context.Context, build func(*proxy.Proxy) fetcher.Req
 		}
 
 		req := build(px)
-		key := px.Key()
+		key := px.DisplayID()
 		if rateKey != nil {
 			key = rateKey(px, req)
 		}
