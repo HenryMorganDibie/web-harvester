@@ -1,0 +1,69 @@
+name: anyIP Harvester Pipeline Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require proxy secret
+        env:
+          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          if [ -z "$HARVESTER_PROXY_URL" ]; then
+            echo "Repository secret HARVESTER_PROXY_URL is missing."
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Run one live job through the full pipeline
+        env:
+          HARVESTER_PROXY_URL: \${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          cat > "$RUNNER_TEMP/harvester-smoke.yaml" <<'YAML'
+          mode: live
+          queries:
+            - "web harvester proxy pipeline smoke test"
+          queue_backend: memory
+          concurrency: 1
+          max_retries: 0
+          rate_per_proxy_rps: 0.2
+          rate_burst: 1
+          adaptive_rate: false
+          live_endpoint: "https://httpbin.org/html"
+          request_timeout: 15s
+          output_path: "-"
+          report_interval: 1s
+          YAML
+
+          go run ./cmd/harvester \
+            -config "$RUNNER_TEMP/harvester-smoke.yaml" \
+            -mode live \
+            -queries "web harvester proxy pipeline smoke test" \
+            -i-have-reviewed-tos \
+            > "$RUNNER_TEMP/harvester-results.jsonl"
+
+          if [ ! -s "$RUNNER_TEMP/harvester-results.jsonl" ]; then
+            echo "Pipeline completed without emitting a result record."
+            exit 1
+          fi
+
+          jq -e -s 'length > 0' "$RUNNER_TEMP/harvester-results.jsonl" >/dev/null
+          echo "Pipeline smoke test emitted $(wc -l < "$RUNNER_TEMP/harvester-results.jsonl" | tr -d ' ') JSONL result record(s)."
+          echo "Result bodies and proxy credentials are not printed or uploaded."
