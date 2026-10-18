@@ -220,7 +220,7 @@ func (c *Crawler) visit(ctx context.Context, s *scope, j job, stats *Stats) []jo
 			p.FinalURL = final
 		}
 		p.StatusCode, p.ContentType = resp.StatusCode, resp.ContentType
-		p.FetchedAt, p.LatencyMS, p.ProxyUsed = time.Now().UTC(), resp.Latency.Milliseconds(), px.Key()
+		p.FetchedAt, p.LatencyMS, p.ProxyUsed = time.Now().UTC(), resp.Latency.Milliseconds(), px.DisplayID()
 		page = p
 		return nil
 	}
