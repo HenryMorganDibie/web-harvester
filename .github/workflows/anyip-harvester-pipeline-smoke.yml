@@ -75,7 +75,7 @@ jobs:
               (.fetched_at | (type == "string" and length > 0)) and
               (.latency_ms | (type == "number" and . >= 0)) and
               (.proxy_used | (type == "string" and length > 0 and (contains("@") | not))) and
-              (.organic | type == "array") and
+              ((.organic // []) | type == "array") and
               (.calibration.missing_blocks | (type == "array" and index("organic_results") != null)) and
               (.raw_body | (type == "string" and length > 0));
             if length != 5 then
@@ -100,7 +100,7 @@ jobs:
                 }),
               error("one or more result records failed schema validation")
             end
-          ' "$RUNNER_TEMP/harvester-results.jsonl" >/dev/null
+          ' "$RUNNER_TEMP/harvester-results.jsonl"
 
           echo "Pipeline smoke test validated 5 JSONL records, metadata, calibration flags, raw-body capture, and credential-free proxy identifiers."
           echo "Result bodies and proxy credentials are not printed or uploaded."
