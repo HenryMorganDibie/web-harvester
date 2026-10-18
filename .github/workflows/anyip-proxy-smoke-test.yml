@@ -1,0 +1,55 @@
+name: anyIP proxy smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: "Number of sequential smoke-test samples (1-10)"
+        required: true
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Require proxy secret
+        shell: bash
+        run: |
+          if [[ -z "${HARVESTER_PROXY_URL}" ]]; then
+            echo "::error::Add the rotated anyIP endpoint as the repository Actions secret HARVESTER_PROXY_URL, then rerun this workflow."
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Run proxy smoke test
+        shell: bash
+        env:
+          REQUESTS: ${{ inputs.requests }}
+        run: |
+          if ! [[ "${REQUESTS}" =~ ^([1-9]|10)$ ]]; then
+            echo "::error::requests must be an integer from 1 to 10"
+            exit 1
+          fi
+          # Keep per-request IP records in the ephemeral runner only. Do not print or upload them.
+          go run ./cmd/proxybench -profile basic-smoke -requests "${REQUESTS}" -delay 1s -out "$RUNNER_TEMP/anyip-results.jsonl"
+          echo "Proxy smoke test completed. Per-request IP records were kept off the Actions log and will not be uploaded."
