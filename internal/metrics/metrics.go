@@ -134,7 +134,7 @@ func (c *Counters) report(elapsed time.Duration) {
 	}
 	dailyProjection := rps * 86400
 	fmt.Fprintf(os.Stderr,
-		"[metrics] elapsed=%s success=%d failure=%d retried=%d dropped=%d completed=%d req/s=%.2f projected/day=%.0f ai_overview=%d calibration_flagged=%d proxy_banned=%d\n",
+		"[metrics] elapsed=%s success=%d failed_attempts=%d retried=%d dropped=%d completed=%d req/s=%.2f projected/day=%.0f ai_overview=%d calibration_flagged=%d proxy_banned=%d\n",
 		elapsed.Round(time.Second), s.Success, s.Failure, s.Retried, s.Dropped, total, rps, dailyProjection,
 		s.AIOverviewPresent, s.CalibrationFlagged, s.ProxyBanned,
 	)
