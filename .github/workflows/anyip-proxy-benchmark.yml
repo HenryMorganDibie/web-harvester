@@ -76,12 +76,17 @@ jobs:
           REQUESTS: ${{ inputs.requests }}
         run: |
           expected_args=()
+          session_args=()
           if [ -n "$EXPECTED_STATE" ]; then
             expected_args=(-expected-state "$EXPECTED_STATE")
+          fi
+          if [ "$PROFILE" = "sticky" ]; then
+            session_args=(-session-id "webharvester_${GITHUB_RUN_ID}")
           fi
 
           go run ./cmd/proxybench \
             -profile "$PROFILE" \
+            "${session_args[@]}" \
             "${expected_args[@]}" \
             -requests "$REQUESTS" \
             -delay 1s \
