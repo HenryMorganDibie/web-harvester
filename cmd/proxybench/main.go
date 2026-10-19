@@ -399,6 +399,11 @@ func configureAnyIPProfile(proxyURL *url.URL, profile, sessionID, expectedState,
 		case known && strings.HasPrefix(lower, "session_"):
 			// Session mode is controlled by the selected benchmark profile.
 			continue
+		case (profile == "rotating" || profile == "state-targeted") && strings.HasPrefix(lower, "sess"):
+			// Session options (sesstime_, sessreplace_, sessasn_) are
+			// meaningless without a session, and dashboard-generated
+			// usernames for sticky profiles include them.
+			continue
 		case profile == "state-targeted" && (strings.HasPrefix(lower, "region_") || strings.HasPrefix(lower, "country_") || strings.HasPrefix(lower, "city_")):
 			// Replace prior location settings with the requested US state.
 			continue

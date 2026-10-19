@@ -57,6 +57,21 @@ read -rs HARVESTER_PROXY_URL && export HARVESTER_PROXY_URL
 
 The summary goes to stderr, samples to `-out`. Keep output files out of Git (`*.jsonl` is ignored).
 
+### Reconciling bytes with the provider
+
+anyIP reports consumption per team through its REST API (`https://dashboard.anyip.io`, `api-key` header). `GET /api/users/me` returns `default_team.id`. Record the usage before and after each run:
+
+```bash
+read -rs ANYIP_API_KEY && export ANYIP_API_KEY
+team=$(curl -sS -H "api-key: $ANYIP_API_KEY" https://dashboard.anyip.io/api/users/me | jq -r .default_team.id)
+used() { curl -sS -H "api-key: $ANYIP_API_KEY" "https://dashboard.anyip.io/api/v1/teams/$team/usage" | jq .consumption_bytes; }
+before=$(used)
+# ... run proxybench ...
+sleep 60; echo "billed: $(( $(used) - before )) bytes"
+```
+
+Compare the billed difference with the summary's `wire_bytes`. The usage figure may lag; re-read it after a few minutes before drawing a conclusion. Running anything else on the same account during a run invalidates the comparison.
+
 ## Protocol
 
 Run the phases in order and stop to review after each. Budget figures use about 7.5 KB of wire traffic per `ipinfo.io` request on a fresh tunnel (measured through a stand-in proxy, not the provider). Confirm the real figure from phase 0's `wire_bytes_per_sample` and the provider's usage figure before committing to later phases.

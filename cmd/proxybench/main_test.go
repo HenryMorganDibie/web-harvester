@@ -85,6 +85,26 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			wantUser: "user_123,country_US",
 		},
 		{
+			name:     "rotating drops session options from a dashboard sticky username",
+			raw:      "http://user_123,type_residential,country_us,sesstime_10080,session_abc:secret@portal.anyip.io:1080",
+			profile:  "rotating",
+			wantUser: "user_123,type_residential,country_us",
+		},
+		{
+			name:      "sticky keeps the dashboard session duration",
+			raw:       "http://user_123,type_residential,country_us,sesstime_10080,session_abc:secret@portal.anyip.io:1080",
+			profile:   "sticky",
+			sessionID: "run1",
+			wantUser:  "user_123,type_residential,country_us,sesstime_10080,session_run1",
+		},
+		{
+			name:     "state targeting drops session options",
+			raw:      "http://user_123,country_us,sesstime_10080,session_abc:secret@portal.anyip.io:1080",
+			profile:  "state-targeted",
+			state:    "Texas",
+			wantUser: "user_123,country_US,region_texas",
+		},
+		{
 			name:      "sticky adds session",
 			raw:       "http://user_123,country_US,session_old:secret@portal.anyip.io:1080",
 			profile:   "sticky",
