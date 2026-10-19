@@ -112,6 +112,7 @@ jobs:
       - name: Run low-volume live proxy benchmark
         env:
           HARVESTER_PROXY_URL: ${{ secrets[inputs.proxy_secret_name] }}
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
           PROFILE: ${{ inputs.profile }}
           PROXY_TYPE: ${{ inputs.proxy_type }}
           EXPECTED_STATES: ${{ inputs.expected_states }}

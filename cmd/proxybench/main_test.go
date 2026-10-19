@@ -257,6 +257,25 @@ func TestRedactorRemovesRequestQueryTokens(t *testing.T) {
 	}
 }
 
+func TestAddIPInfoToken(t *testing.T) {
+	u, _ := url.Parse("https://ipinfo.io/json")
+	addIPInfoToken(u, "tok123")
+	if u.Query().Get("token") != "tok123" || u.Path != "/json" {
+		t.Fatalf("token not added: %s", u)
+	}
+	explicit, _ := url.Parse("https://ipinfo.io/json?token=mine")
+	addIPInfoToken(explicit, "tok123")
+	if explicit.Query().Get("token") != "mine" {
+		t.Fatalf("explicit token was overridden: %s", explicit)
+	}
+	other, _ := url.Parse("https://example.com/page")
+	addIPInfoToken(other, "tok123")
+	if other.RawQuery != "" {
+		t.Fatalf("token leaked to another host: %s", other)
+	}
+	addIPInfoToken(nil, "tok123")
+}
+
 // fakeProxy is a scripted forward proxy. Plain-HTTP requests are answered
 // according to the session in the Proxy-Authorization username; CONNECT
 // requests are refused the way anyIP refuses an unsatisfiable tunnel.

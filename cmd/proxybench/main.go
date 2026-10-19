@@ -88,8 +88,11 @@ type settings struct {
 	RetryBackoffMS  int64  `json:"retry_backoff_ms"`
 	RetryNewSession bool   `json:"retry_new_session"`
 	SessionID       string `json:"session_id,omitempty"`
-	UsableCheck     bool   `json:"usable_check"`
-	HashIPs         bool   `json:"hash_ips"`
+	// GeoAuthenticated records whether ipinfo requests carried a token,
+	// without recording the token.
+	GeoAuthenticated bool `json:"geo_authenticated"`
+	UsableCheck      bool `json:"usable_check"`
+	HashIPs          bool `json:"hash_ips"`
 }
 
 type summary struct {
@@ -251,6 +254,10 @@ func main() {
 			geoMode = "same-request"
 		}
 	}
+	if token := strings.TrimSpace(os.Getenv("IPINFO_TOKEN")); token != "" {
+		addIPInfoToken(targetURL, token)
+		addIPInfoToken(geoTarget, token)
+	}
 	if *expectedState != "" && geoMode == "none" {
 		fatal("-expected-state needs a geo probe; do not combine it with -geo-url none")
 	}
@@ -309,6 +316,7 @@ func main() {
 		TimeoutMS: timeout.Milliseconds(), DelayMS: delay.Milliseconds(), KeepAlive: *keepAlive,
 		Retries: *retries, RetryBackoffMS: retryBackoff.Milliseconds(), RetryNewSession: *retryNewSession,
 		UsableCheck: *expectSubstr != "", HashIPs: *hashIPs,
+		GeoAuthenticated: strings.Contains(targetURL.RawQuery, "token=") || (geoTarget != nil && strings.Contains(geoTarget.RawQuery, "token=")),
 	}
 	if *profile == "sticky" {
 		agg.sum.Settings.SessionID = *sessionID
@@ -371,6 +379,21 @@ func newClient(timeout time.Duration, keepAlive bool) *http.Client {
 		}
 		return nil
 	}}
+}
+
+// addIPInfoToken authenticates requests to ipinfo.io, whose unauthenticated
+// rate limit otherwise produces 429s that would be counted against the
+// proxy. The token comes from the environment so it never appears in
+// command lines or workflow inputs; an explicit token in the URL wins.
+func addIPInfoToken(u *url.URL, token string) {
+	if u == nil || !strings.EqualFold(u.Hostname(), "ipinfo.io") {
+		return
+	}
+	q := u.Query()
+	if q.Get("token") == "" {
+		q.Set("token", token)
+		u.RawQuery = q.Encode()
+	}
 }
 
 func parseHTTPURL(raw string) (*url.URL, error) {
