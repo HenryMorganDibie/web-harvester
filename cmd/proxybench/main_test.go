@@ -232,6 +232,16 @@ func TestRedactor(t *testing.T) {
 	}
 }
 
+func TestRedactorRemovesRequestQueryTokens(t *testing.T) {
+	base, _ := url.Parse("http://user_abc:pw@portal.anyip.io:1080")
+	target, _ := url.Parse("https://ipinfo.io/json?token=tok123abc")
+	redact := redactor(base, target, nil)
+	msg := redact(`Get "https://ipinfo.io/json?token=tok123abc": context deadline exceeded`)
+	if strings.Contains(msg, "tok123abc") {
+		t.Fatalf("query token survived redaction: %q", msg)
+	}
+}
+
 // fakeProxy is a scripted forward proxy. Plain-HTTP requests are answered
 // according to the session in the Proxy-Authorization username; CONNECT
 // requests are refused the way anyIP refuses an unsatisfiable tunnel.

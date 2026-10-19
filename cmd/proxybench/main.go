@@ -284,7 +284,7 @@ func main() {
 		backoff:       *retryBackoff,
 		newSession:    *retryNewSession,
 		sessionID:     *sessionID,
-		redact:        redactor(proxyURL),
+		redact:        redactor(proxyURL, targetURL, geoTarget),
 		hashIP:        func(ip string) string { return ip },
 	}
 	if *hashIPs {
@@ -693,8 +693,23 @@ func classifyError(err error) string {
 // redactor removes the proxy password and account ID from error text. It
 // matches the account ID rather than the full username because each
 // attempt's username carries different session, region and type flags.
-func redactor(proxyURL *url.URL) func(string) string {
+// Query values of the target and geo URLs are removed too, because Go puts
+// the request URL in its errors and those queries can carry API tokens.
+func redactor(proxyURL *url.URL, requestURLs ...*url.URL) func(string) string {
 	var secrets []string
+	for _, u := range requestURLs {
+		if u == nil || u.RawQuery == "" {
+			continue
+		}
+		secrets = append(secrets, u.RawQuery)
+		for _, values := range u.Query() {
+			for _, v := range values {
+				if v != "" {
+					secrets = append(secrets, v, url.QueryEscape(v))
+				}
+			}
+		}
+	}
 	if proxyURL.User != nil {
 		if account := strings.Split(proxyURL.User.Username(), ",")[0]; account != "" {
 			secrets = append(secrets, account, url.QueryEscape(account))
