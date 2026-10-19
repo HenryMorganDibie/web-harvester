@@ -90,7 +90,7 @@ Run the phases in order and stop to review after each. Budget figures use about 
 - rotating shows `distinct_ips` close to `samples`, with `reused_connections` 0;
 - sticky shows `distinct_ips` of 1;
 - the two sticky arms do not share an exit: different `observed_org` or IP hash. A shared exit means the arms shared a session;
-- mobile arms exit on mobile carrier networks (for example T-Mobile AS21928, Verizon AS6167 or AS22394, AT&T AS20057) in `observed_org`. Record what is observed rather than assuming the `type_` flag was honored.
+- record the network (`observed_org`) distribution per type. A mobile arm exiting on non-carrier networks is a failure. The converse proves nothing: the residential pool has also returned carrier networks (T-Mobile AS21928, Verizon AS6167, AT&T AS20057), which may be fixed wireless home internet or mobile devices. The network number cannot distinguish the two pools, so report pool composition as observed and leave classification to the provider.
 
 Record usage through the API before and after each arm, not once per phase, so billed bytes can be attributed. Read the "after" figure at least two minutes after the last request.
 
