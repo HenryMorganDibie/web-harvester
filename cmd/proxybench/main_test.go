@@ -105,6 +105,14 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			wantUser: "user_123,country_US,region_texas",
 		},
 		{
+			name:      "sticky session name is kept apart per type",
+			raw:       "http://user_123,type_residential,country_us,session_abc:secret@portal.anyip.io:1080",
+			profile:   "sticky",
+			sessionID: "smoke1",
+			proxyType: "mobile",
+			wantUser:  "user_123,country_us,type_mobile,session_smoke1_mobile",
+		},
+		{
 			name:      "sticky adds session",
 			raw:       "http://user_123,country_US,session_old:secret@portal.anyip.io:1080",
 			profile:   "sticky",
@@ -348,6 +356,13 @@ func TestRunSampleDoesNotRetryAuthFailure(t *testing.T) {
 
 	if s.TargetOK || s.Attempts != 1 || s.ProxyError != "wrong_customer_credentials" {
 		t.Fatalf("sample = %+v, want one non-retried auth failure", s)
+	}
+}
+
+func TestRandomSessionID(t *testing.T) {
+	a, b := randomSessionID(), randomSessionID()
+	if a == b || !strings.HasPrefix(a, "wh") || strings.ContainsAny(a, ", |@") {
+		t.Fatalf("session IDs %q %q must be unique per run and valid in a username", a, b)
 	}
 }
 

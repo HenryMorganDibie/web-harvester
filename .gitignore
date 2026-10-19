@@ -6,3 +6,5 @@
 captures/
 pages.jsonl
 capture.yaml
+runs/
+*.summary.json

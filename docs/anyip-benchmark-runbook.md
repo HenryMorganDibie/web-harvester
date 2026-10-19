@@ -51,11 +51,17 @@ go build -o bin/proxybench ./cmd/proxybench
 # stays out of shell history and process arguments.
 read -rs HARVESTER_PROXY_URL && export HARVESTER_PROXY_URL
 
+mkdir -p runs/phase0
 ./bin/proxybench -profile rotating -type residential -requests 5 -hash-ips \
-  -target-url https://ipinfo.io/json -geo-url https://ipinfo.io/json -out smoke.jsonl
+  -target-url https://ipinfo.io/json -geo-url https://ipinfo.io/json \
+  -out runs/phase0/rotating-residential.jsonl 2> runs/phase0/rotating-residential.summary.json
 ```
 
-The summary goes to stderr, samples to `-out`. Keep output files out of Git (`*.jsonl` is ignored).
+The summary goes to stderr, samples to `-out`. `runs/`, `*.jsonl` and `*.summary.json` are ignored by Git. In a non-interactive shell, where `read -rs` cannot prompt, load the URL from a file outside the repository instead of typing it into a command.
+
+### Sticky session names
+
+anyIP keys a sticky session by its name. A request that reuses a name resumes that session's exit for up to its `sesstime` (7 days for dashboard-generated profiles), even from a later run and even with a different `type_` flag. `proxybench` therefore picks a random session ID per run when `-session-id` is omitted, appends the type (`_residential`, `_mobile`) when `-type` is set, and records the base ID in the summary. Pass an explicit `-session-id` only to deliberately resume a session.
 
 ### Reconciling bytes with the provider
 
@@ -78,13 +84,21 @@ Run the phases in order and stop to review after each. Budget figures use about 
 
 ### Phase 0: smoke test (≈ 0.2 MB)
 
-`rotating` and `sticky`, each with `residential` and `mobile`, 5 samples each. Pass criteria: requests succeed; rotating shows `distinct_ips` close to `samples` with `reused_connections` 0; sticky shows `distinct_ips` of 1; `observed_country` is US. Record the provider dashboard's usage before and after.
+`rotating` and `sticky`, each with `residential` and `mobile`, 5 samples each. Pass criteria:
+
+- requests succeed and `observed_country` is US;
+- rotating shows `distinct_ips` close to `samples`, with `reused_connections` 0;
+- sticky shows `distinct_ips` of 1;
+- the two sticky arms do not share an exit: different `observed_org` or IP hash. A shared exit means the arms shared a session;
+- mobile arms exit on mobile carrier networks (for example T-Mobile AS21928, Verizon AS6167 or AS22394, AT&T AS20057) in `observed_org`. Record what is observed rather than assuming the `type_` flag was honored.
+
+Record usage through the API before and after each arm, not once per phase, so billed bytes can be attributed. Read the "after" figure at least two minutes after the last request.
 
 ### Phase 1, benchmark A: state coverage (≈ 20 MB)
 
 `state-targeted`, target and geo `https://ipinfo.io/json`, 30 samples per state, for each of the 45 listed regions, residential first, then mobile. Then 100 samples for the states that matter commercially (for example California, Texas, New York, Florida, Illinois). Also request one unlisted state (for example Wyoming) with 5 samples to record how the provider fails: an error code, or a silent fallback to another state.
 
-Report per state and type: requested region value, samples, successes, state matches, the Wilson interval, median latency, and error codes. Geolocation databases disagree at state level, especially for mobile carrier ranges; name the database used and treat a mismatch as "observed elsewhere by ipinfo," not as proof of mis-routing. Cross-checking mismatches against a second geolocation source is a cheap follow-up.
+Report per state and type: requested region value, samples, successes, state matches, the Wilson interval, median latency, and error codes. Geolocation databases disagree at state level, especially for mobile carrier ranges; name the database used and treat a mismatch as "observed elsewhere by ipinfo," not as proof of mis-routing. Satellite exits need the same care: Starlink (AS14593) addresses geolocate to the ground station or point of presence, which can be in a different state from the subscriber, so report how many samples per state exited on satellite networks. Cross-checking mismatches against a second geolocation source is a cheap follow-up.
 
 ### Phase 2, benchmark B: sticky vs. rotating (≈ 10 MB for geo, plus 1,200 × the representative page)
 
