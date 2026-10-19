@@ -37,7 +37,7 @@ Each sample is one optional geo probe plus one target request with up to `-retri
 
 ## Where to run it
 
-- **Do not run a provider benchmark from the public repository's Actions** until the provider has agreed the results may be published. Logs and artifacts of a public repository are readable by any signed-in GitHub user. Use a private fork with its own secret, or run locally.
+- **Treat public-repository Actions runs as visible.** Logs and artifacts of a public repository are readable by any signed-in GitHub user. The workflow keeps results out of the log and keeps the artifact for one day; download it promptly, and delete the run's logs once archived if the provider has not agreed to publication. A private fork or a local run avoids the exposure entirely.
 - Latency includes the client-to-gateway leg. GitHub-hosted runners are not pinned to a region, and a local run from outside the US adds a constant transatlantic leg. Run every arm of a comparison from the same place and record it.
 - Use only targets you are authorized to request. `ipinfo.io/json` is a geolocation service used as intended. For the representative workload use a site you operate. Do not use this to bypass authentication, paywalls, CAPTCHAs or access controls, and do not induce failures against third-party sites.
 
