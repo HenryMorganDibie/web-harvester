@@ -1,28 +1,46 @@
 name: anyIP Proxy Benchmark
 
+# Logs and artifacts of a public repository are readable by anyone signed in
+# to GitHub. Run provider benchmarks whose results are not yet cleared for
+# publication from a private fork or locally; see docs/anyip-benchmark-runbook.md.
+
 on:
   workflow_dispatch:
     inputs:
       profile:
-        description: "Provider profile already configured by the operator"
+        description: "Session behavior"
         required: true
         type: choice
         options:
           - rotating
           - sticky
           - state-targeted
+      proxy_type:
+        description: "Network type; account-default keeps the secret's own setting"
+        required: true
+        default: account-default
+        type: choice
+        options:
+          - account-default
+          - residential
+          - mobile
       proxy_secret_name:
-        description: "GitHub Actions secret containing the configured proxy URL"
+        description: "GitHub Actions secret containing the proxy URL"
         required: true
         default: HARVESTER_PROXY_URL
         type: string
-      expected_state:
-        description: "Expected US state/region for state-targeted trials; leave blank otherwise"
+      expected_states:
+        description: "state-targeted only: comma-separated US states, e.g. Texas,New York,District of Columbia"
         required: false
         default: ""
         type: string
+      target_url:
+        description: "Authorized target. The default measures geo on the target request itself"
+        required: true
+        default: "https://ipinfo.io/json"
+        type: string
       requests:
-        description: "Sequential samples (start small; 5–20 recommended)"
+        description: "Sequential samples per state (or per run when not state-targeted)"
         required: true
         default: "5"
         type: choice
@@ -30,6 +48,24 @@ on:
           - "5"
           - "10"
           - "20"
+          - "30"
+          - "50"
+          - "100"
+      retries:
+        description: "Retries per sample after a transport error, proxy error, 429 or 5xx"
+        required: true
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
+          - "2"
+          - "3"
+      retry_new_session:
+        description: "sticky only: retry on a new session ID"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -37,7 +73,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 120
     steps:
       - name: Check out selected branch
         uses: actions/checkout@v4
@@ -52,14 +88,19 @@ jobs:
         env:
           HARVESTER_PROXY_URL: ${{ secrets[inputs.proxy_secret_name] }}
           PROFILE: ${{ inputs.profile }}
-          EXPECTED_STATE: ${{ inputs.expected_state }}
+          EXPECTED_STATES: ${{ inputs.expected_states }}
+          RETRY_NEW_SESSION: ${{ inputs.retry_new_session }}
         run: |
           if [ -z "$HARVESTER_PROXY_URL" ]; then
             echo "The selected GitHub Actions secret is missing or empty."
             exit 1
           fi
-          if [ "$PROFILE" = "state-targeted" ] && [ -z "$EXPECTED_STATE" ]; then
-            echo "expected_state is required for state-targeted trials."
+          if [ "$PROFILE" = "state-targeted" ] && [ -z "$EXPECTED_STATES" ]; then
+            echo "expected_states is required for state-targeted trials."
+            exit 1
+          fi
+          if [ "$RETRY_NEW_SESSION" = "true" ] && [ "$PROFILE" != "sticky" ]; then
+            echo "retry_new_session only applies to the sticky profile."
             exit 1
           fi
 
@@ -72,37 +113,53 @@ jobs:
         env:
           HARVESTER_PROXY_URL: ${{ secrets[inputs.proxy_secret_name] }}
           PROFILE: ${{ inputs.profile }}
-          EXPECTED_STATE: ${{ inputs.expected_state }}
+          PROXY_TYPE: ${{ inputs.proxy_type }}
+          EXPECTED_STATES: ${{ inputs.expected_states }}
+          TARGET_URL: ${{ inputs.target_url }}
           REQUESTS: ${{ inputs.requests }}
+          RETRIES: ${{ inputs.retries }}
+          RETRY_NEW_SESSION: ${{ inputs.retry_new_session }}
         run: |
-          expected_args=()
-          session_args=()
-          if [ -n "$EXPECTED_STATE" ]; then
-            expected_args=(-expected-state "$EXPECTED_STATE")
+          go build -o "$RUNNER_TEMP/proxybench" ./cmd/proxybench
+          out="$RUNNER_TEMP/proxy-benchmark"
+          mkdir -p "$out"
+
+          common=(-profile "$PROFILE" -requests "$REQUESTS" -retries "$RETRIES"
+                  -delay 1s -timeout 15s -target-url "$TARGET_URL" -hash-ips)
+          if [ "$PROXY_TYPE" != "account-default" ]; then
+            common+=(-type "$PROXY_TYPE")
           fi
           if [ "$PROFILE" = "sticky" ]; then
-            session_args=(-session-id "webharvester_${GITHUB_RUN_ID}")
+            common+=(-session-id "webharvester_${GITHUB_RUN_ID}")
+          fi
+          if [ "$RETRY_NEW_SESSION" = "true" ]; then
+            common+=(-retry-new-session)
           fi
 
-          go run ./cmd/proxybench \
-            -profile "$PROFILE" \
-            "${session_args[@]}" \
-            "${expected_args[@]}" \
-            -requests "$REQUESTS" \
-            -delay 1s \
-            -timeout 15s \
-            -target-url "https://httpbin.org/status/200" \
-            -geo-url "https://ipinfo.io/json" \
-            -out "$RUNNER_TEMP/proxy-benchmark.jsonl" \
-            2> "$RUNNER_TEMP/proxy-benchmark-summary.json"
+          run() {
+            local label="$1"; shift
+            "$RUNNER_TEMP/proxybench" "${common[@]}" "$@" \
+              -out "$out/$label.jsonl" 2> "$out/$label.summary.json" || {
+                cat "$out/$label.summary.json"; return 1; }
+            echo "== $label"
+            cat "$out/$label.summary.json"
+          }
 
-          echo "Aggregate summary (sample-level IPs and proxy identifiers are not uploaded):"
-          cat "$RUNNER_TEMP/proxy-benchmark-summary.json"
+          if [ "$PROFILE" = "state-targeted" ]; then
+            IFS=',' read -ra states <<< "$EXPECTED_STATES"
+            for state in "${states[@]}"; do
+              state="$(echo "$state" | xargs)"
+              [ -n "$state" ] || continue
+              run "state-$(echo "$state" | tr 'A-Z ' 'a-z_')" -expected-state "$state"
+            done
+          else
+            run "$PROFILE"
+          fi
 
-      - name: Upload aggregate-only report
+      - name: Upload summaries and IP-hashed samples
         uses: actions/upload-artifact@v4
         with:
-          name: proxy-benchmark-${{ inputs.profile }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/proxy-benchmark-summary.json
+          name: proxy-benchmark-${{ inputs.profile }}-${{ inputs.proxy_type }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/proxy-benchmark/
           if-no-files-found: error
           retention-days: 14
