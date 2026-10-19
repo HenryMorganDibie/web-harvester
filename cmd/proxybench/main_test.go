@@ -113,6 +113,14 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			wantUser:  "user_123,country_us,type_mobile,session_smoke1_mobile",
 		},
 		{
+			name:      "sticky keeps sessreplace_false and the dashboard duration",
+			raw:       "http://user_123,type_residential,country_us,sesstime_10080,sessreplace_false,session_abc:secret@portal.anyip.io:1080",
+			profile:   "sticky",
+			sessionID: "smoke3",
+			proxyType: "mobile",
+			wantUser:  "user_123,country_us,sesstime_10080,sessreplace_false,type_mobile,session_smoke3_mobile",
+		},
+		{
 			name:      "sticky adds session",
 			raw:       "http://user_123,country_US,session_old:secret@portal.anyip.io:1080",
 			profile:   "sticky",
