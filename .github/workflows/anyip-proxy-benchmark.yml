@@ -130,7 +130,7 @@ jobs:
             common+=(-type "$PROXY_TYPE")
           fi
           if [ "$PROFILE" = "sticky" ]; then
-            common+=(-session-id "webharvester_${GITHUB_RUN_ID}")
+            common+=(-session-id "wh${GITHUB_RUN_ID}")
           fi
           if [ "$RETRY_NEW_SESSION" = "true" ]; then
             common+=(-retry-new-session)

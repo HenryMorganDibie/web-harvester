@@ -61,7 +61,9 @@ The summary goes to stderr, samples to `-out`. `runs/`, `*.jsonl` and `*.summary
 
 ### Sticky session names
 
-anyIP keys a sticky session by its name. A request that reuses a name resumes that session's exit for up to its `sesstime` (7 days for dashboard-generated profiles), even from a later run and even with a different `type_` flag. `proxybench` therefore picks a random session ID per run when `-session-id` is omitted, appends the type (`_residential`, `_mobile`) when `-type` is set, and records the base ID in the summary. Pass an explicit `-session-id` only to deliberately resume a session.
+anyIP keys a sticky session by its name. A request that reuses a name resumes that session's exit for up to its `sesstime` (7 days for dashboard-generated profiles), even from a later run and even with a different `type_` flag. `proxybench` therefore picks a random session ID per run when `-session-id` is omitted, appends the type (`residential`, `mobile`) when `-type` is set, and records the base ID in the summary. Pass an explicit `-session-id` only to deliberately resume a session.
+
+Session names must be 1 to 32 letters and digits (anyIP errors reference, `bad_attributes_session_name_invalid_character`). In phase 0 the gateway did not return that error for names containing underscores: it answered 200 and gave a new exit on every request, as if no session had been requested. `proxybench` refuses such names, including after it appends the type and retry suffixes.
 
 ### Reconciling bytes with the provider
 

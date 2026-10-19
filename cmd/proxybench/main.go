@@ -427,16 +427,16 @@ func configureAnyIPProfile(proxyURL *url.URL, profile, sessionID, expectedState,
 	switch profile {
 	case "sticky":
 		if sessionID == "" {
-			sessionID = "webharvester_benchmark"
-		}
-		if strings.ContainsAny(sessionID, ", |") || strings.Contains(sessionID, "@") {
-			return fmt.Errorf("-session-id must not contain commas, pipes, spaces, or @")
+			sessionID = "webharvesterbenchmark"
 		}
 		// anyIP keys a session by its name alone: a second request with the
 		// same name but a different type_ flag resumes the first session's
 		// exit. Suffixing the type keeps residential and mobile arms apart.
 		if proxyType != "" {
-			sessionID += "_" + proxyType
+			sessionID += proxyType
+		}
+		if err := validSessionName(sessionID); err != nil {
+			return err
 		}
 		params = append(params, "session_"+sessionID)
 	case "state-targeted":
@@ -547,7 +547,7 @@ func (r *runner) runSample(targetURL, geoURL *url.URL, geoMode string) sample {
 			time.Sleep(wait)
 			if r.newSession {
 				r.sessionSeq++
-				session = fmt.Sprintf("%s_r%d", r.sessionID, r.sessionSeq)
+				session = fmt.Sprintf("%sr%d", r.sessionID, r.sessionSeq)
 			}
 		}
 		res := r.do(targetURL, session)
@@ -617,6 +617,22 @@ func (s *sample) applyGeo(body []byte, expectedState string, hashIP func(string)
 		match := strings.EqualFold(strings.TrimSpace(expectedState), strings.TrimSpace(s.ObservedState))
 		s.StateMatch = &match
 	}
+}
+
+// validSessionName enforces anyIP's documented rule for session names:
+// 1-32 characters, letters and digits only. Phase 0 showed the gateway
+// accepting names with underscores without an error, yet rotating the
+// exit on every request as if no session had been requested.
+func validSessionName(name string) error {
+	if len(name) < 1 || len(name) > 32 {
+		return fmt.Errorf("session name %q must be 1-32 characters including the type and retry suffixes; shorten -session-id", name)
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return fmt.Errorf("session name %q may contain only letters and digits (anyIP rule); remove underscores, hyphens and other characters from -session-id", name)
+		}
+	}
+	return nil
 }
 
 // randomSessionID names a sticky session uniquely per run, so a run never

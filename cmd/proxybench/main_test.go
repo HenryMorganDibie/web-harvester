@@ -110,7 +110,7 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			profile:   "sticky",
 			sessionID: "smoke1",
 			proxyType: "mobile",
-			wantUser:  "user_123,country_us,type_mobile,session_smoke1_mobile",
+			wantUser:  "user_123,country_us,type_mobile,session_smoke1mobile",
 		},
 		{
 			name:      "sticky keeps sessreplace_false and the dashboard duration",
@@ -118,14 +118,14 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			profile:   "sticky",
 			sessionID: "smoke3",
 			proxyType: "mobile",
-			wantUser:  "user_123,country_us,sesstime_10080,sessreplace_false,type_mobile,session_smoke3_mobile",
+			wantUser:  "user_123,country_us,sesstime_10080,sessreplace_false,type_mobile,session_smoke3mobile",
 		},
 		{
 			name:      "sticky adds session",
 			raw:       "http://user_123,country_US,session_old:secret@portal.anyip.io:1080",
 			profile:   "sticky",
-			sessionID: "wh_run_123",
-			wantUser:  "user_123,country_US,session_wh_run_123",
+			sessionID: "whrun123",
+			wantUser:  "user_123,country_US,session_whrun123",
 		},
 		{
 			name:     "state targeting replaces region, city and country",
@@ -160,6 +160,21 @@ func TestConfigureAnyIPProfile(t *testing.T) {
 			raw:       "http://user_123:secret@portal.anyip.io:1080",
 			profile:   "rotating",
 			proxyType: "datacenter",
+			wantErr:   true,
+		},
+		{
+			name:      "underscore in session ID is rejected",
+			raw:       "http://user_123:secret@portal.anyip.io:1080",
+			profile:   "sticky",
+			sessionID: "smoke2_mobile",
+			wantErr:   true,
+		},
+		{
+			name:      "session name over 32 characters with its type suffix is rejected",
+			raw:       "http://user_123:secret@portal.anyip.io:1080",
+			profile:   "sticky",
+			sessionID: "abcdefghijklmnopqrstuvwxy",
+			proxyType: "residential",
 			wantErr:   true,
 		},
 		{
@@ -335,10 +350,10 @@ func TestRunSampleRecoversOnNewSession(t *testing.T) {
 	if s.ObservedIP != "203.0.113.7" || s.StateMatch == nil || !*s.StateMatch || !s.GeoSameRequest {
 		t.Fatalf("geo from the target request was not applied: %+v", s)
 	}
-	if r.sessionID != "bad_r1" {
+	if r.sessionID != "badr1" {
 		t.Fatalf("runner session = %q, want the recovered session to be kept", r.sessionID)
 	}
-	if got := fp.usernames; len(got) != 2 || got[0] != "user_test,session_bad" || got[1] != "user_test,session_bad_r1" {
+	if got := fp.usernames; len(got) != 2 || got[0] != "user_test,session_bad" || got[1] != "user_test,session_badr1" {
 		t.Fatalf("proxy usernames = %v", got)
 	}
 }
