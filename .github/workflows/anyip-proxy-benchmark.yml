@@ -17,6 +17,7 @@ on:
           - rotating
           - sticky
           - state-targeted
+          - sticky-vs-rotating
       proxy_type:
         description: "Network type; account-default keeps the secret's own setting"
         required: true
@@ -68,6 +69,11 @@ on:
         required: false
         default: false
         type: boolean
+      expect_substring:
+        description: "Text a response must contain to count as usable; blank treats every 2xx as usable"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -101,7 +107,7 @@ jobs:
             echo "expected_states is required for state-targeted trials."
             exit 1
           fi
-          if [ "$RETRY_NEW_SESSION" = "true" ] && [ "$PROFILE" != "sticky" ]; then
+          if [ "$RETRY_NEW_SESSION" = "true" ] && [ "$PROFILE" != "sticky" ] && [ "$PROFILE" != "sticky-vs-rotating" ]; then
             echo "retry_new_session only applies to the sticky profile."
             exit 1
           fi
@@ -122,43 +128,67 @@ jobs:
           REQUESTS: ${{ inputs.requests }}
           RETRIES: ${{ inputs.retries }}
           RETRY_NEW_SESSION: ${{ inputs.retry_new_session }}
+          EXPECT_SUBSTRING: ${{ inputs.expect_substring }}
         run: |
           go build -o "$RUNNER_TEMP/proxybench" ./cmd/proxybench
           out="$RUNNER_TEMP/proxy-benchmark"
           mkdir -p "$out"
 
-          common=(-profile "$PROFILE" -requests "$REQUESTS" -retries "$RETRIES"
-                  -delay 1s -timeout 15s -target-url "$TARGET_URL" -hash-ips)
+          common=(-retries "$RETRIES" -delay 1s -timeout 15s -target-url "$TARGET_URL" -hash-ips)
           if [ "$PROXY_TYPE" != "account-default" ]; then
             common+=(-type "$PROXY_TYPE")
           fi
-          if [ "$PROFILE" = "sticky" ]; then
-            common+=(-session-id "wh${GITHUB_RUN_ID}")
+          if [ -n "$EXPECT_SUBSTRING" ]; then
+            common+=(-expect-substring "$EXPECT_SUBSTRING")
           fi
+          sticky_args=(-profile sticky -session-id "wh${GITHUB_RUN_ID}")
           if [ "$RETRY_NEW_SESSION" = "true" ]; then
-            common+=(-retry-new-session)
+            sticky_args+=(-retry-new-session)
           fi
 
+          # run LABEL SUMMARY_SUFFIX ARGS...: samples append to LABEL.jsonl.
           run() {
-            local label="$1"; shift
+            local label="$1" suffix="$2"; shift 2
             "$RUNNER_TEMP/proxybench" "${common[@]}" "$@" \
-              -out "$out/$label.jsonl" 2> "$out/$label.summary.json" || {
-                cat "$out/$label.summary.json"; return 1; }
+              -out "$out/$label.jsonl" 2> "$out/$label$suffix.summary.json" || {
+                cat "$out/$label$suffix.summary.json"; return 1; }
             # Results stay in the artifact only; the log records that the
             # run happened, not what it found.
-            echo "== $label: $(wc -l < "$out/$label.jsonl") samples written"
+            echo "== $label$suffix: $(wc -l < "$out/$label.jsonl") samples written"
           }
 
-          if [ "$PROFILE" = "state-targeted" ]; then
-            IFS=',' read -ra states <<< "$EXPECTED_STATES"
-            for state in "${states[@]}"; do
-              state="$(echo "$state" | xargs)"
-              [ -n "$state" ] || continue
-              run "state-$(echo "$state" | tr 'A-Z ' 'a-z_')" -expected-state "$state"
-            done
-          else
-            run "$PROFILE"
-          fi
+          case "$PROFILE" in
+            state-targeted)
+              IFS=',' read -ra states <<< "$EXPECTED_STATES"
+              for state in "${states[@]}"; do
+                state="$(echo "$state" | xargs)"
+                [ -n "$state" ] || continue
+                run "state-$(echo "$state" | tr 'A-Z ' 'a-z_')" "" \
+                  -profile state-targeted -requests "$REQUESTS" -expected-state "$state"
+              done
+              ;;
+            sticky-vs-rotating)
+              # Alternate the two arms in four blocks on the same runner, so
+              # time of day and runner location affect both equally. The
+              # sticky arm keeps one session name across its blocks.
+              block=$(( REQUESTS / 4 ))
+              for b in 1 2 3 4; do
+                run rotating ".b$b" -profile rotating -requests "$block"
+                run sticky ".b$b" "${sticky_args[@]}" -requests "$block"
+              done
+              ;;
+            sticky)
+              run sticky "" "${sticky_args[@]}" -requests "$REQUESTS"
+              ;;
+            *)
+              run "$PROFILE" "" -profile "$PROFILE" -requests "$REQUESTS"
+              ;;
+          esac
+
+          # Where the runner itself is, for reading latency; GitHub's address,
+          # not a proxy exit, and only city, region and network are kept.
+          curl -sS --max-time 10 "https://ipinfo.io/json?token=${IPINFO_TOKEN}" \
+            | jq -c '{city, region, country, org}' > "$out/runner.json" || true
 
       - name: Upload summaries and IP-hashed samples
         uses: actions/upload-artifact@v4
