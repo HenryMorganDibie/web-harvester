@@ -52,6 +52,10 @@ proxies, no network access required.
   health-based proxy cooldowns, failover to another proxy or to the browser,
   and retries. Blocks are detected and routed around, never bypassed. See
   [Acquisition resilience](#acquisition-resilience).
+- **Proxy provider measurement**: `cmd/proxybench` measures a residential or
+  mobile proxy provider the way a scraper experiences it: rotation, sticky
+  sessions, state-level targeting, provider error codes, retries and billed
+  bytes. See [Measuring proxy providers](#measuring-proxy-providers).
 - **Reproducible testing**: `make integration` / `make e2e` run the suite and
   the deployed Playwright image against real Redis, PostgreSQL and Chromium
   in Docker; the same tests run without Docker against any local services.
@@ -375,6 +379,52 @@ on the empty-list code path; and a proxy that kept failing after its first
 cooldown was never banned again, because the ban only triggered when the
 failure count *equalled* the threshold. `TestPool_RebansAfterCooldownExpires`
 fails against the old code).
+
+## Measuring proxy providers
+
+Before routing a workload through a residential or mobile proxy provider,
+it is worth knowing how that provider behaves from the scraper's side, not
+from its marketing page. `cmd/proxybench` is a small, auditable runner for
+exactly that, and `.github/workflows/anyip-proxy-benchmark.yml` runs it from
+GitHub Actions with the proxy URL held in a repository secret.
+
+What it measures per request, written as one JSON line each plus a summary:
+
+| Question | How |
+|----------|-----|
+| Does rotating mode really rotate? | A fresh tunnel per request by default, because Go reuses a kept-alive `CONNECT` tunnel and its exit IP; exit IPs and tunnel reuse are recorded |
+| Does a sticky session hold its exit? | Distinct exit IPs and IP changes per session; `-session-renew N` caps how many requests one exit carries |
+| Does state targeting land in the requested state? | With the geolocation service as the target, the state is read from the measured request itself; a separate probe would use a different exit under rotation |
+| Is the response usable, not just a 200? | `-expect-substring` requires text that only a correct page contains, so challenge and consent pages count as failures |
+| Why did a request fail? | The provider's machine-readable error header (for example `no_peers_available`) is captured from refused tunnels; transport errors, timeouts and target status codes are classified separately |
+| Do retries recover? | `-retries`, optionally on a new sticky session, with first-attempt versus eventual success, recovery time and bytes spent on failed attempts |
+| What does it cost? | Body bytes and every byte exchanged with the proxy, to reconcile with the provider's own usage figures |
+
+Summaries record the commit, every setting, Wilson confidence intervals for
+small samples, and a note when a p95 rests on too few requests to be stable.
+Exit IPs can be stored as salted hashes (`-hash-ips`), credentials and API
+tokens are redacted from every recorded error, and the runner refuses to send
+traffic without a proxy configured.
+
+```bash
+go build -o bin/proxybench ./cmd/proxybench
+read -rs HARVESTER_PROXY_URL && export HARVESTER_PROXY_URL   # paste; nothing is echoed
+
+./bin/proxybench -profile rotating -type residential -requests 30 -hash-ips \
+  -target-url https://ipinfo.io/json -geo-url https://ipinfo.io/json -out rotating.jsonl
+```
+
+Session, network-type and US-state options are written in anyIP's documented
+username syntax, the provider this was first used with; the measurement
+itself is provider-neutral. The full protocol (phases, sample sizes, budget,
+and what each result can and cannot show) is in
+[docs/anyip-benchmark-runbook.md](docs/anyip-benchmark-runbook.md).
+
+What this does not do: it measures a provider, it does not certify one, and
+it does not get around anti-bot protection. A target that blocks an exit is
+recorded as blocked. Results depend on time of day, client location and the
+geolocation database used, so they belong in a dated report with their
+settings, not in this README.
 
 ## Persistent storage (PostgreSQL)
 
@@ -960,6 +1010,7 @@ cmd/harvester/          CLI entrypoint and wiring (the worker/consumer side)
 cmd/api/                Job-submission HTTP layer: POST /jobs, GET /jobs/:run_id (the producer side)
 cmd/loadtest/           Offline orchestration measurement: fixed-count, concurrency sweep, and soak-test modes
 cmd/crawl/              General-purpose web crawler for any website (see "Crawling any website")
+cmd/proxybench/         Proxy provider measurement: rotation, sticky sessions, state targeting, errors, retries, bytes
 internal/crawl/         Crawl targets: scope, frontier, robots.txt and Crawl-delay, per-host rate keys
 internal/extract/       Any HTML page -> model.Page: generic page data + per-site CSS-selector fields/items
 internal/robots/        robots.txt (RFC 9309) parsing, matching and per-origin caching
@@ -979,6 +1030,7 @@ internal/metrics/       Run counters, latency percentile tracking, periodic repo
 internal/store/         Sink/PageSink interfaces + JSON-Lines and PostgreSQL (serp_results, pages) implementations
 internal/config/        YAML config loading
 configs/                Example configs (harvester, schedule, crawl)
+docs/                   Proxy benchmark runbook and proxy smoke test
 deploy/                 Docker Compose (harvester+Redis+Prometheus+Grafana, opt-in Playwright harvester),
                         systemd units, Dockerfiles (Alpine default, official Playwright image for mode: playwright)
 tests/integration/      Pipeline test against real Redis/PostgreSQL/Chromium + the fixture site and proxies
