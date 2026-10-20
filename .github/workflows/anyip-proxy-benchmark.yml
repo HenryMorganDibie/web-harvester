@@ -123,6 +123,23 @@ jobs:
             exit 1
           fi
 
+      - name: Record provider usage before the run
+        env:
+          ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
+          USAGE_FILE: usage_start.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/proxy-benchmark"
+          # Account-wide consumption from anyIP's usage API. Overlapping runs
+          # share the account, so attribute bytes per window, not per run.
+          # Values go to the artifact only, never to the log.
+          [ -n "$ANYIP_API_KEY" ] || { echo "ANYIP_API_KEY not set; skipping usage reading"; exit 0; }
+          api=https://dashboard.anyip.io
+          team=$(curl -sS --max-time 15 -H "api-key: $ANYIP_API_KEY" "$api/api/users/me" | jq -r '.default_team.id // empty') || true
+          [ -n "$team" ] || { echo "usage reading unavailable"; exit 0; }
+          curl -sS --max-time 15 -H "api-key: $ANYIP_API_KEY" "$api/api/v1/teams/$team/usage" \
+            | jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{at: $at, consumption_bytes}' \
+            > "$RUNNER_TEMP/proxy-benchmark/$USAGE_FILE" || echo "usage reading unavailable"
+
       - name: Run static analysis and tests
         run: |
           go vet ./...
@@ -208,6 +225,26 @@ jobs:
           # not a proxy exit, and only city, region and network are kept.
           curl -sS --max-time 10 "https://ipinfo.io/json?token=${IPINFO_TOKEN}" \
             | jq -c '{city, region, country, org}' > "$out/runner.json" || true
+
+      - name: Record provider usage after the run
+        if: always()
+        env:
+          ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
+          USAGE_FILE: usage_end.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/proxy-benchmark"
+          # anyIP's usage figure settles within about two minutes.
+          [ -n "$ANYIP_API_KEY" ] && sleep 120
+          # Account-wide consumption from anyIP's usage API. Overlapping runs
+          # share the account, so attribute bytes per window, not per run.
+          # Values go to the artifact only, never to the log.
+          [ -n "$ANYIP_API_KEY" ] || { echo "ANYIP_API_KEY not set; skipping usage reading"; exit 0; }
+          api=https://dashboard.anyip.io
+          team=$(curl -sS --max-time 15 -H "api-key: $ANYIP_API_KEY" "$api/api/users/me" | jq -r '.default_team.id // empty') || true
+          [ -n "$team" ] || { echo "usage reading unavailable"; exit 0; }
+          curl -sS --max-time 15 -H "api-key: $ANYIP_API_KEY" "$api/api/v1/teams/$team/usage" \
+            | jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{at: $at, consumption_bytes}' \
+            > "$RUNNER_TEMP/proxy-benchmark/$USAGE_FILE" || echo "usage reading unavailable"
 
       - name: Upload summaries and IP-hashed samples
         uses: actions/upload-artifact@v4
