@@ -87,6 +87,7 @@ type settings struct {
 	Retries         int    `json:"retries"`
 	RetryBackoffMS  int64  `json:"retry_backoff_ms"`
 	RetryNewSession bool   `json:"retry_new_session"`
+	SessionRenew    int    `json:"session_renew,omitempty"`
 	SessionID       string `json:"session_id,omitempty"`
 	// GeoAuthenticated records whether ipinfo requests carried a token,
 	// without recording the token.
@@ -220,6 +221,7 @@ func main() {
 	retries := flag.Int("retries", 0, "retries per sample after a transport error, proxy error, 429 or 5xx")
 	retryBackoff := flag.Duration("retry-backoff", 500*time.Millisecond, "base delay before a retry, doubled per retry; a Retry-After of at most 30s takes precedence")
 	retryNewSession := flag.Bool("retry-new-session", false, "sticky profile: retry on a new session ID, and keep it if the retry succeeds")
+	sessionRenew := flag.Int("session-renew", 0, "sticky profile: start a new session every N samples, capping the requests any one exit IP carries; 0 keeps one session")
 	hashIPs := flag.Bool("hash-ips", false, "record exit IPs as salted hashes; the per-run salt is never written, so change and distinct-IP counts still work")
 	outPath := flag.String("out", "-", "JSONL output path, or - for stdout")
 	flag.Parse()
@@ -277,6 +279,9 @@ func main() {
 	if _, err := cfg.url(*sessionID); err != nil {
 		fatal(err.Error())
 	}
+	if *sessionRenew < 0 || (*sessionRenew > 0 && *profile != "sticky") {
+		fatal("-session-renew must be zero or positive, and only applies to the sticky profile")
+	}
 	if *retryNewSession && *profile != "sticky" {
 		fatal("-retry-new-session only applies to the sticky profile")
 	}
@@ -315,7 +320,7 @@ func main() {
 		ExpectedState: *expectedState, Requests: *requests,
 		TimeoutMS: timeout.Milliseconds(), DelayMS: delay.Milliseconds(), KeepAlive: *keepAlive,
 		Retries: *retries, RetryBackoffMS: retryBackoff.Milliseconds(), RetryNewSession: *retryNewSession,
-		UsableCheck: *expectSubstr != "", HashIPs: *hashIPs,
+		UsableCheck: *expectSubstr != "", HashIPs: *hashIPs, SessionRenew: *sessionRenew,
 		GeoAuthenticated: strings.Contains(targetURL.RawQuery, "token=") || (geoTarget != nil && strings.Contains(geoTarget.RawQuery, "token=")),
 	}
 	if *profile == "sticky" {
@@ -324,9 +329,13 @@ func main() {
 	if geoTarget != nil {
 		agg.sum.Settings.GeoHost = geoTarget.Hostname()
 	}
+	baseSession := *sessionID
 	for i := 0; i < *requests; i++ {
 		if i > 0 && *delay > 0 {
 			time.Sleep(*delay)
+		}
+		if *sessionRenew > 0 {
+			r.sessionID = renewedSession(baseSession, i, *sessionRenew)
 		}
 		s := r.runSample(targetURL, geoTarget, geoMode)
 		if err := encoder.Encode(s); err != nil {
@@ -656,6 +665,16 @@ func validSessionName(name string) error {
 		}
 	}
 	return nil
+}
+
+// renewedSession names the session for sample i when sessions are renewed
+// every n samples: the base name for the first n, then base+"s1", "s2"...
+// Letters and digits only, as anyIP requires.
+func renewedSession(base string, i, n int) string {
+	if k := i / n; k > 0 {
+		return fmt.Sprintf("%ss%d", base, k)
+	}
+	return base
 }
 
 // randomSessionID names a sticky session uniquely per run, so a run never

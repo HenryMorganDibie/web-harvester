@@ -74,6 +74,17 @@ on:
         required: false
         default: ""
         type: string
+      session_renew:
+        description: "Sticky arms: start a new session every N requests (0 keeps one session)"
+        required: true
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "5"
+          - "10"
+          - "15"
+          - "25"
 
 permissions:
   contents: read
@@ -129,6 +140,7 @@ jobs:
           RETRIES: ${{ inputs.retries }}
           RETRY_NEW_SESSION: ${{ inputs.retry_new_session }}
           EXPECT_SUBSTRING: ${{ inputs.expect_substring }}
+          SESSION_RENEW: ${{ inputs.session_renew }}
         run: |
           go build -o "$RUNNER_TEMP/proxybench" ./cmd/proxybench
           out="$RUNNER_TEMP/proxy-benchmark"
@@ -141,9 +153,12 @@ jobs:
           if [ -n "$EXPECT_SUBSTRING" ]; then
             common+=(-expect-substring "$EXPECT_SUBSTRING")
           fi
-          sticky_args=(-profile sticky -session-id "wh${GITHUB_RUN_ID}")
+          sticky_args=(-profile sticky)
           if [ "$RETRY_NEW_SESSION" = "true" ]; then
             sticky_args+=(-retry-new-session)
+          fi
+          if [ "$SESSION_RENEW" != "0" ]; then
+            sticky_args+=(-session-renew "$SESSION_RENEW")
           fi
 
           # run LABEL SUMMARY_SUFFIX ARGS...: samples append to LABEL.jsonl.
@@ -174,11 +189,15 @@ jobs:
               block=$(( REQUESTS / 4 ))
               for b in 1 2 3 4; do
                 run rotating ".b$b" -profile rotating -requests "$block"
-                run sticky ".b$b" "${sticky_args[@]}" -requests "$block"
+                # With renewal each block starts its own sessions, so a block
+                # never resumes a session the target has already blocked.
+                sid="wh${GITHUB_RUN_ID}"
+                [ "$SESSION_RENEW" != "0" ] && sid="wh${GITHUB_RUN_ID}b$b"
+                run sticky ".b$b" "${sticky_args[@]}" -session-id "$sid" -requests "$block"
               done
               ;;
             sticky)
-              run sticky "" "${sticky_args[@]}" -requests "$REQUESTS"
+              run sticky "" "${sticky_args[@]}" -session-id "wh${GITHUB_RUN_ID}" -requests "$REQUESTS"
               ;;
             *)
               run "$PROFILE" "" -profile "$PROFILE" -requests "$REQUESTS"

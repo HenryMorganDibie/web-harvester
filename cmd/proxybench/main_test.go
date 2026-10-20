@@ -411,6 +411,23 @@ func TestRunSampleDoesNotRetryAuthFailure(t *testing.T) {
 	}
 }
 
+func TestRenewedSession(t *testing.T) {
+	cases := []struct {
+		i, n int
+		want string
+	}{
+		{0, 15, "wh1"}, {14, 15, "wh1"}, {15, 15, "wh1s1"}, {29, 15, "wh1s1"}, {30, 15, "wh1s2"},
+	}
+	for _, c := range cases {
+		if got := renewedSession("wh1", c.i, c.n); got != c.want {
+			t.Fatalf("renewedSession(wh1, %d, %d) = %q, want %q", c.i, c.n, got, c.want)
+		}
+		if err := validSessionName(renewedSession("wh1", c.i, c.n) + "residential"); err != nil {
+			t.Fatalf("renewed name invalid: %v", err)
+		}
+	}
+}
+
 func TestRandomSessionID(t *testing.T) {
 	a, b := randomSessionID(), randomSessionID()
 	if a == b || !strings.HasPrefix(a, "wh") || strings.ContainsAny(a, ", |@") {
