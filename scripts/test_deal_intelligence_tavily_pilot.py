@@ -8,13 +8,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.deal_intelligence_tavily_pilot import (
+    africa_relevant,
     candidate_matches_database,
     classify_candidates,
+    extract_event_date,
     fetch_database,
     freshness_status,
     normalize_url,
     parse_article,
     parse_date,
+    related_fund_matches,
 )
 
 
@@ -112,15 +115,60 @@ class DiscoveryPilotTests(unittest.TestCase):
         self.assertEqual(rows[0]["review_status"], "already_in_database")
         self.assertEqual(rows[0]["database_match"][0]["id"], "old")
 
+    def test_event_date_overrides_recent_article_date(self):
+        text = (
+            "The manager's story index dates the first-close announcement to November 6, 2025 "
+            "and the final-close announcement to August 26, 2026."
+        )
+        self.assertEqual(
+            extract_event_date(text, reference_date=date(2026, 10, 22)),
+            date(2026, 8, 26),
+        )
+        self.assertEqual(
+            freshness_status(extract_event_date(text, reference_date=date(2026, 10, 22)),
+                             today=date(2026, 10, 22), days=30)[0],
+            "stale",
+        )
+
+    def test_non_african_transaction_is_rejected_even_from_africa_query(self):
+        no_country_matches = lambda text: []
+        deal = {"country": None, "countries": []}
+        self.assertFalse(africa_relevant(
+            deal,
+            "Grand City Properties acquires a stake in LEG Immobilien SE",
+            "Luxembourg property company announces a shareholding.",
+            no_country_matches,
+        ))
+        self.assertTrue(africa_relevant(
+            {"country": "NG", "countries": ["NG"]},
+            "Ventures Platform Fund II reaches final close",
+            "The Nigerian fund manager confirmed its final close.",
+            no_country_matches,
+        ))
+
+    def test_related_fund_check_flags_same_series_but_not_another_series(self):
+        candidate = {
+            "deal_type": "fund_raise", "target": "Ventures Platform Fund II",
+            "announced": "2026-08-26",
+        }
+        existing = [
+            {"id": "fund2", "deal_type": "fund_raise", "target": "Ventures Platform Fund II",
+             "announced": "2025-11-06"},
+            {"id": "fund1", "deal_type": "fund_raise", "target": "Ventures Platform Fund I",
+             "announced": "2026-08-26"},
+        ]
+        matches = related_fund_matches(candidate, existing)
+        self.assertEqual([row["id"] for row in matches], ["fund2"])
+
     def test_only_publisher_dated_recent_nonduplicates_are_potentially_new(self):
         matcher = lambda a, b: False
         rows = classify_candidates([
             {"deal": {"id": "1"}, "freshness_status": "recent",
-             "source": {"page_fetch_status": "fetched", "date_basis": "publisher"}},
+             "source": {"page_fetch_status": "fetched", "date_basis": "publisher_article"}},
             {"deal": {"id": "2"}, "freshness_status": "recent",
              "source": {"page_fetch_status": "fetched", "date_basis": "search_result"}},
             {"deal": {"id": "3"}, "freshness_status": "undated",
-             "source": {"page_fetch_status": "fetched", "date_basis": "publisher"}},
+             "source": {"page_fetch_status": "fetched", "date_basis": "publisher_article"}},
             {"deal": {"id": "4"}, "freshness_status": "recent",
              "source": {"page_fetch_status": "fetch_failed", "date_basis": "publisher"}},
         ], [], matcher)
