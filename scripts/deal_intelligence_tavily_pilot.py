@@ -134,7 +134,7 @@ def africa_relevant(deal: dict, title: str, lead: str, countries_in_text) -> boo
 
 def _target_tokens(value: str) -> set[str]:
     tokens = set(re.findall(r"[a-z0-9]+", (value or "").casefold()))
-    return tokens - {"the", "a", "an", "fund", "group", "holdings", "holding", "limited", "ltd", "plc", "inc", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
+    return tokens - {"the", "a", "an", "fund", "group", "holdings", "holding", "limited", "ltd", "plc", "inc"}
 
 
 def related_fund_matches(candidate: dict, existing: list[dict]) -> list[dict]:
