@@ -72,6 +72,21 @@ class DiscoveryPilotTests(unittest.TestCase):
         self.assertEqual(article["published_date"], "2026-10-22T10:00:00Z")
         self.assertNotIn("Fintech Fintech Fintech", article["lead"])
 
+    def test_jsonld_article_body_and_date_are_used_when_meta_is_missing(self):
+        html = """
+        <html><head><title>Publisher page</title></head><body>
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"NewsArticle",
+         "headline":"Kenyan climate-tech startup raises $8 million",
+         "datePublished":"2026-10-21T09:00:00Z",
+         "articleBody":"A Kenyan climate-tech startup raised $8 million in a Series A round. The investment will expand operations across East Africa."}
+        </script></body></html>
+        """
+        article = parse_article(html)
+        self.assertIn("climate-tech", article["title"])
+        self.assertIn("raised $8 million", article["lead"])
+        self.assertEqual(article["published_date"], "2026-10-21T09:00:00Z")
+
     def test_database_pagination_requires_complete_snapshot(self):
         client = FakeClient({
             0: {"total_in_database": 3, "deals": [{"id": "1"}, {"id": "2"}]},
