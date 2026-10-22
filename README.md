@@ -71,6 +71,23 @@ proxies, no network access required.
 - **Limitations**: documented in full, not glossed over — see
   [Honest limitations](#honest-limitations).
 
+- **Recent search evaluation**: a 50-query mixed-difficulty run returned at least one mapped organic result for 49 queries (98%); median latency was 1.39s and p95 was 4.37s. See [Recent search evaluation](#recent-search-evaluation) for scope and limitations.
+
+## Recent search evaluation
+
+A recent 50-query evaluation covered 25 general, mixed-topic searches and 25 more difficult flight-related searches, including a Shanghai-to-Brussels query.
+
+| Measure | Result |
+|---|---:|
+| Queries tested | 50 |
+| Queries with at least one mapped organic result | 49/50 (98%) |
+| General / mixed-topic queries with results | 25/25 (100%) |
+| Difficult flight-related queries with results | 24/25 (96%) |
+| Median request latency | 1.39 s |
+| 95th-percentile request latency | 4.37 s |
+
+The run measured whether organic results were returned and how long requests took. It did **not** score semantic relevance, verify every result's factual correctness, or establish that the direct-to-Google fetch path works reliably. One difficult flight query returned no mapped organic results. These figures are a snapshot from this query set, not a general accuracy guarantee or a production-volume benchmark.
+
 Full document index: [CAPABILITIES.md](CAPABILITIES.md) (answers to the five
 questions this was built for) · [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)
 (architecture-to-operations checklist) · [RUNBOOK.md](RUNBOOK.md) (what to
