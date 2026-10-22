@@ -25,16 +25,12 @@ jobs:
       - name: Validate configured credentials without printing them
         env:
           HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-          PROVIDER_BASE_URL: ${{ vars.PROVIDER_BASE_URL }}
           ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
         shell: bash
         run: |
           set +x
           [ -n "$HARVESTER_PROXY_URL" ] || { echo "::error::HARVESTER_PROXY_URL secret is missing."; exit 1; }
-          [ -n "$SERPAPI_KEY" ] || { echo "::error::SERPAPI_KEY secret is missing."; exit 1; }
-          [ -n "$PROVIDER_BASE_URL" ] || { echo "::error::Repository variable PROVIDER_BASE_URL is missing."; exit 1; }
-          echo "Required proxy and SERP-provider configuration is present."
+          echo "Required anyIP proxy configuration is present."
           if [ -n "$ANYIP_API_KEY" ]; then
             echo "anyIP usage API credential is present."
           else
@@ -46,11 +42,9 @@ jobs:
           go vet ./...
           go test ./...
 
-      - name: Execute 50 queries through Web Harvester and the configured anyIP proxy
+      - name: Execute 50 queries through Web Harvester direct Google mode and the configured anyIP proxy
         env:
           HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-          PROVIDER_BASE_URL: ${{ vars.PROVIDER_BASE_URL }}
           ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
         shell: bash
         run: |
@@ -135,7 +129,7 @@ jobs:
             f.write("\n")
 
           config = {
-            "mode": "provider",
+            "mode": "live",
             "queries": [q["query"] for q in queries],
             "queue_backend": "memory",
             "concurrency": 1,
@@ -144,9 +138,6 @@ jobs:
             "rate_burst": 1,
             "adaptive_rate": False,
             "proxies": [],
-            "provider_base_url": os.environ["PROVIDER_BASE_URL"],
-            "provider_api_key_env": "SERPAPI_KEY",
-            "provider_engine": "google",
             "request_timeout": "30s",
             "output_path": os.path.join(out, "harvester-results.jsonl"),
             "report_interval": "5s",
@@ -189,7 +180,8 @@ jobs:
           go build -o "$RUNNER_TEMP/web-harvester" ./cmd/harvester
           "$RUNNER_TEMP/web-harvester" \
             -config "$out/config.json" \
-            -mode provider \
+            -mode live \
+            -i-have-reviewed-tos \
             > "$out/harvester-stdout.log" \
             2> "$out/harvester-stderr.log"
 
