@@ -235,7 +235,7 @@ jobs:
             if raw is None:
               pattern = re.compile(
                 r'worker: job "' + re.escape(q["query"]) +
-                r'" dropped.*?(?:unexpected status|status)\\s+(\\d{3})',
+                r'" dropped.*?(?:unexpected status|status)\s+(\d{3})',
                 re.IGNORECASE,
               )
               match = pattern.search(worker_log)
