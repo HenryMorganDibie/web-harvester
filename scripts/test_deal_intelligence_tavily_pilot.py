@@ -14,6 +14,7 @@ from scripts.deal_intelligence_tavily_pilot import (
     extract_event_date,
     fetch_database,
     freshness_status,
+    is_social_platform,
     normalize_url,
     parse_article,
     parse_date,
@@ -53,6 +54,12 @@ class DiscoveryPilotTests(unittest.TestCase):
             normalize_url("https://Example.com/story/?utm_source=x#section"),
             "https://example.com/story",
         )
+
+    def test_social_platforms_are_skipped_but_publisher_pages_are_kept(self):
+        self.assertTrue(is_social_platform("https://www.linkedin.com/posts/example"))
+        self.assertTrue(is_social_platform("https://m.facebook.com/story"))
+        self.assertTrue(is_social_platform("https://instagram.com/p/example"))
+        self.assertFalse(is_social_platform("https://techcabal.com/2026/10/22/funding-news"))
 
     def test_parse_dates_and_rejects_unknown_dates(self):
         self.assertEqual(parse_date("2026-10-22T10:15:00Z"), date(2026, 10, 22))
