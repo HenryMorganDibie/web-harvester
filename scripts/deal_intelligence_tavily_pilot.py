@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import html as html_lib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import re
@@ -219,6 +220,50 @@ class ArticleParser(HTMLParser):
         return title[:300], paragraphs[:120], self.meta
 
 
+def _jsonld_article(markup: str) -> dict:
+    """Read publisher-declared Article JSON-LD when available."""
+    found = []
+    pattern = re.compile(
+        r"<script\b[^>]*type\s*=\s*['\"]application/ld\+json['\"][^>]*>(.*?)</script\s*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    def walk(value):
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, dict):
+            types = value.get("@type", [])
+            if isinstance(types, str):
+                types = [types]
+            if any(str(t).lower() in {"article", "newsarticle", "report", "blogposting"} for t in types):
+                found.append(value)
+            for key, child in value.items():
+                if key in {"@graph", "mainEntity", "mainEntityOfPage"}:
+                    walk(child)
+
+    for raw in pattern.findall(markup[:2_000_000]):
+        try:
+            walk(json.loads(html_lib.unescape(raw).strip()))
+        except (ValueError, TypeError):
+            continue
+    if not found:
+        return {}
+    found.sort(key=lambda obj: (bool(obj.get("articleBody")), bool(obj.get("datePublished"))), reverse=True)
+    article = found[0]
+    body = article.get("articleBody")
+    if isinstance(body, str):
+        body = html_lib.unescape(re.sub(r"<[^>]+>", " ", body))
+        body = re.sub(r"\s+", " ", body).strip()
+    else:
+        body = ""
+    return {
+        "title": str(article.get("headline") or article.get("name") or "")[:300],
+        "body": body[:12000],
+        "published_date": article.get("datePublished"),
+    }
+
+
 def parse_article(markup: str) -> dict:
     parser = ArticleParser()
     try:
@@ -226,6 +271,11 @@ def parse_article(markup: str) -> dict:
     except Exception:
         pass
     title, paragraphs, meta = parser.result()
+    structured = _jsonld_article(markup)
+    if not title:
+        title = structured.get("title") or ""
+    if not paragraphs and structured.get("body"):
+        paragraphs = [p.strip() for p in re.split(r"(?<=[.!?])\s+", structured["body"]) if p.strip()]
     deal_terms = re.compile(
         r"\b(raises?|raised|funding|investment|invests?|acquires?|acquisition|merger|merges?|"
         r"private equity|venture capital|fund close|first close|final close|loan|facility|financing|"
@@ -238,7 +288,7 @@ def parse_article(markup: str) -> dict:
     lead = re.sub(r"\s+", " ", " ".join(chosen)).strip()[:3500]
     pub_date = next((meta[k] for k in (
         "article:published_time", "datepublished", "parsely-pub-date", "publish-date", "pubdate", "date"
-    ) if meta.get(k)), None)
+    ) if meta.get(k)), None) or structured.get("published_date")
     return {"title": title, "lead": lead, "published_date": pub_date, "paragraph_count": len(paragraphs)}
 
 
