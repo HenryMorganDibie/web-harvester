@@ -13,7 +13,7 @@ permissions:
 jobs:
   diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -248,11 +248,111 @@ jobs:
           print("Single-search outcome:", report["search_request"]["status"])
           PY
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install headless Chromium for the hybrid smoke test
+        run: sh scripts/install-playwright.sh --with-deps
+
+      - name: Test one query through Web Harvester hybrid mode
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          out="$RUNNER_TEMP/anyip-diagnostic"
+          mkdir -p "$out"
+          python3 - "$out" <<'PY'
+          import json, os, sys
+          out = sys.argv[1]
+          config = {
+            "mode": "hybrid",
+            "queries": ["Python official documentation"],
+            "queue_backend": "memory",
+            "concurrency": 1,
+            "max_retries": 0,
+            "rate_per_proxy_rps": 0.2,
+            "rate_burst": 1,
+            "adaptive_rate": False,
+            "proxies": [],
+            "live_endpoint": "https://www.google.com/search",
+            "request_timeout": "30s",
+            "browser_pool_size": 1,
+            "browser_max_session_uses": 1,
+            "output_path": os.path.join(out, "hybrid-results.jsonl"),
+            "report_interval": "1s",
+          }
+          with open(os.path.join(out, "hybrid-config.json"), "w", encoding="utf-8") as f:
+            json.dump(config, f)
+          PY
+          go build -o "$out/harvester" ./cmd/harvester
+          set +e
+          "$out/harvester" -config "$out/hybrid-config.json" -mode hybrid -i-have-reviewed-tos > "$out/stdout.log" 2> "$out/stderr.log"
+          run_exit=$?
+          set -e
+          python3 - "$out" "$run_exit" <<'PY'
+          import json, os, re, sys
+          out, exit_code = sys.argv[1], int(sys.argv[2])
+          results_path = os.path.join(out, "hybrid-results.jsonl")
+          records = []
+          try:
+            with open(results_path, encoding="utf-8") as f:
+              records = [json.loads(line) for line in f if line.strip()]
+          except OSError:
+            pass
+          organic_count = sum(len(r.get("organic") or []) for r in records)
+          latencies = [r.get("latency_ms") for r in records if isinstance(r.get("latency_ms"), (int, float))]
+          try:
+            logs = open(os.path.join(out, "stderr.log"), encoding="utf-8", errors="replace").read().lower()
+          except OSError:
+            logs = ""
+          if records and organic_count:
+            status, reason = "passed", "usable_organic_results"
+          elif "captcha" in logs or "challenge" in logs:
+            status, reason = "blocked", "captcha_or_challenge_detected"
+          elif "interstitial" in logs or "javascript" in logs:
+            status, reason = "no_results", "javascript_interstitial_or_browser_fallback_failed"
+          elif "consent" in logs:
+            status, reason = "no_results", "consent_wall"
+          elif "cooldown" in logs:
+            status, reason = "no_results", "proxy_cooldown"
+          elif "timeout" in logs or "deadline exceeded" in logs:
+            status, reason = "no_results", "timeout"
+          elif "request failed" in logs or "unexpected eof" in logs:
+            status, reason = "no_results", "network_request_failed"
+          else:
+            status, reason = "no_results", "no_successful_parsed_record"
+          report = {
+            "diagnostic": "single-query Web Harvester hybrid-mode smoke test",
+            "mode": "hybrid",
+            "status": status,
+            "reason_category": reason,
+            "process_exit_code": exit_code,
+            "successful_parsed_records": len(records),
+            "organic_result_count": organic_count,
+            "fetch_latency_ms": latencies[0] if latencies else None,
+            "browser_fallback_available_in_runner": True,
+            "safety_note": "No proxy URL, credentials, raw response body, or worker logs are included.",
+          }
+          with open(os.path.join(out, "hybrid-smoke.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+            f.write("\n")
+          print("Hybrid smoke status:", status)
+          print("Reason category:", reason)
+          print("Parsed records:", len(records), "organic results:", organic_count)
+          PY
+
       - name: Upload sanitized diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: anyip-proxy-diagnostic
-          path: ${{ runner.temp }}/anyip-proxy-diagnostic.json
+          path: |
+            ${{ runner.temp }}/anyip-proxy-diagnostic.json
+            ${{ runner.temp }}/anyip-diagnostic/hybrid-smoke.json
           if-no-files-found: warn
           retention-days: 7
