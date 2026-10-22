@@ -97,15 +97,21 @@ class DiscoveryPilotTests(unittest.TestCase):
         self.assertEqual(rows[0]["review_status"], "already_in_database")
         self.assertEqual(rows[0]["database_match"][0]["id"], "old")
 
-    def test_only_fetched_recent_nonduplicates_can_be_potentially_new(self):
+    def test_only_publisher_dated_recent_nonduplicates_are_potentially_new(self):
         matcher = lambda a, b: False
         rows = classify_candidates([
-            {"deal": {"id": "1"}, "freshness_status": "recent", "source": {"page_fetch_status": "fetched"}},
-            {"deal": {"id": "2"}, "freshness_status": "undated", "source": {"page_fetch_status": "fetched"}},
-            {"deal": {"id": "3"}, "freshness_status": "recent", "source": {"page_fetch_status": "fetch_failed"}},
+            {"deal": {"id": "1"}, "freshness_status": "recent",
+             "source": {"page_fetch_status": "fetched", "date_basis": "publisher"}},
+            {"deal": {"id": "2"}, "freshness_status": "recent",
+             "source": {"page_fetch_status": "fetched", "date_basis": "search_result"}},
+            {"deal": {"id": "3"}, "freshness_status": "undated",
+             "source": {"page_fetch_status": "fetched", "date_basis": "publisher"}},
+            {"deal": {"id": "4"}, "freshness_status": "recent",
+             "source": {"page_fetch_status": "fetch_failed", "date_basis": "publisher"}},
         ], [], matcher)
         self.assertEqual([r["review_status"] for r in rows], [
-            "potentially_new_needs_human_review", "not_eligible_as_new", "not_eligible_as_new"
+            "potentially_new_needs_human_review", "needs_date_confirmation",
+            "not_eligible_as_new", "not_eligible_as_new"
         ])
 
 
