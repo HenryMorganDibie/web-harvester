@@ -1043,15 +1043,14 @@ client's volume, not just a pitch:
    extraction return it as structured JSON already (see
    `internal/parser/json_provider.go`).
 
-3. **No CAPTCHA solving or anti-detection/evasion measures are implemented**
-   for either direct-to-Google mode (`live` or `playwright`). A real browser
-   can still be challenged; browser mode reports those pages as blocked and
-   stops. The live tests recorded CAPTCHA and JavaScript-check responses
-   rather than search results, so direct Google collection is not currently a
-   dependable path with this implementation. Proxy rotation and adaptive
-   throttling are resilience mechanisms, not a guarantee of access and not a
-   way to defeat access controls. For dependable Google results, use the
-   [third-party provider fetcher](#third-party-provider-fetcher).
+3. **Direct Google collection was tested, but did not return usable results.**
+   Live requests returned JavaScript checks and CAPTCHA challenges; browser
+   mode reports those pages as blocked and stops. No CAPTCHA solving or
+   anti-detection/evasion measures are implemented. Reliable search collection
+   was subsequently validated through the
+   [third-party provider fetcher](#third-party-provider-fetcher). Proxy
+   rotation and adaptive throttling are resilience mechanisms, not a guarantee
+   of access and not a way to defeat access controls.
 
 4. **The resilience logic is tuned against fixtures, not live traffic.**
    Cooldown lengths, throttling steps and block markers are reasoned
