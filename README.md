@@ -138,11 +138,7 @@ and review-artifact upload.
 | Source pages attempted | 30 |
 | Source pages fetched successfully | 22/30 |
 | Existing Deal Intelligence records loaded for comparison | 4,506 |
-| Production records changed | None |
 
-Some publisher pages declined or timed out during retrieval: five HTTP 403
-responses, one HTTP 401, one connection timeout, and one read timeout. The
-workflow records these as fetch outcomes rather than successful page retrievals.
 
 **What this demonstrates:** a third-party search provider was connected to
 Web Harvester, search results were collected, source pages were fetched through
