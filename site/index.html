@@ -419,7 +419,7 @@ go run ./cmd/harvester -config configs/config.example.yaml -mode mock">Copy</but
           <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Confidence intervals, not single numbers.</b> Small samples are flagged rather than over-read.</span></li>
           <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Usable results, not just HTTP 200.</b> A challenge or consent page counts as a failure.</span></li>
           <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Billed bytes reconciled</b> against the provider's own usage figures.</span></li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Private by default.</b> Exit IPs hashed, credentials and tokens redacted, results kept out of public logs.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Sensitive data stays private.</b> Exit IPs are hashed and credentials are redacted; only selected aggregate findings are published.</span></li>
         </ul>
         <p style="margin-top:24px"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester/blob/main/docs/anyip-benchmark-runbook.md" target="_blank" rel="noopener">Read the measurement protocol →</a></p>
       </div>
@@ -431,6 +431,21 @@ go run ./cmd/harvester -config configs/config.example.yaml -mode mock">Copy</but
         <div><dt>Do retries recover?</dt><dd>First-attempt against eventual success, recovery time, bytes spent on failures.</dd></div>
         <div><dt>What does it cost?</dt><dd>Every byte exchanged, compared with what the provider bills.</dd></div>
       </dl>
+    </div>
+  </section>
+
+    <div class="card reveal" style="margin-top:24px">
+      <div class="eyebrow">US proxy benchmark results · 19–20 October 2026</div>
+      <h3 style="font-size:22px;margin:10px 0 8px">Observed performance, with the sample sizes to back it up.</h3>
+      <p style="color:var(--muted);font-size:14.5px;margin:0 0 20px">A two-phase evaluation of residential and mobile proxy pools using Web Harvester. Results are specific to these test conditions.</p>
+      <div class="stats" style="margin-top:0">
+        <div class="stat"><div class="n">98.2%</div><div class="l">Residential exits geolocated to the requested state</div><div class="footnote" style="text-align:left">1,502 of 1,530 requests</div></div>
+        <div class="stat"><div class="n">600/600</div><div class="l">Usable protected-page responses with sticky sessions renewed every 15 requests</div></div>
+        <div class="stat"><div class="n">97.9%</div><div class="l">Usable responses with rotating sessions</div><div class="footnote" style="text-align:left">1,175 of 1,200 requests</div></div>
+        <div class="stat"><div class="n">100–230 ms</div><div class="l">Faster median latency for renewed sticky sessions</div><div class="footnote" style="text-align:left">Across all six comparisons</div></div>
+      </div>
+      <p style="color:var(--muted);font-size:14.5px;margin:20px 0 0"><b style="color:var(--text)">What we learned:</b> Renewed sticky sessions were faster in every comparison. A single long-lived sticky session performed worse on the tested protected page, with 16–49 usable responses per 100-request run before HTTP 4xx responses. Mobile state geolocation is less conclusive because carrier gateways can appear in a different state.</p>
+      <p style="margin:16px 0 0"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester#us-proxy-benchmark" target="_blank" rel="noopener">Read the benchmark methodology and results on GitHub →</a></p>
     </div>
   </section>
 
