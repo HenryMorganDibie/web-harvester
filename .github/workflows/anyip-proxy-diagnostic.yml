@@ -84,21 +84,35 @@ jobs:
                           "Accept-Language": "en-US,en;q=0.8",
                       })
                       with opener.open(req, timeout=20) as response:
-                          body = response.read(1_500_000).decode("utf-8", "replace")
+                          raw_body = response.read(1_500_000)
+                          body = raw_body.decode("utf-8", "replace")
                           elapsed = round((time.monotonic() - start) * 1000)
                           lower = body.lower()
-                          blocked_terms = ("unusual traffic", "our systems have detected", "recaptcha", "sorry/index", "automated queries")
+                          blocked_terms = ("unusual traffic", "our systems have detected", "recaptcha", "automated queries", "detected unusual traffic")
+                          consent_terms = ("before you continue to google", "consent.google.com", "consent form")
                           is_blocked = any(term in lower for term in blocked_terms)
+                          is_consent = any(term in lower for term in consent_terms)
                           has_search_shell = 'id="search"' in lower or "id='search'" in lower
-                          has_result = bool(re.search(r'class=["\'][^"\']*(?:MjjYud|g)[^"\']*["\']', body))
-                          parsed_organic_like = has_search_shell and has_result and not is_blocked
+                          has_result = bool(re.search(r'class=["\\'][^"\\']*(?:MjjYud|g)[^"\\']*["\\']', body))
+                          parsed_organic_like = has_search_shell and has_result and not is_blocked and not is_consent
+                          title_match = re.search(r"<title[^>]*>(.*?)</title\\s*>", body, re.IGNORECASE | re.DOTALL)
+                          page_title = re.sub(r"\\s+", " ", title_match.group(1)).strip()[:180] if title_match else None
+                          # Keep only URL origin/path; do not persist query parameters.
+                          from urllib.parse import urlsplit
+                          final = urlsplit(response.geturl())
+                          safe_final_url = f"{final.scheme}://{final.netloc}{final.path[:160]}"
                           report["search_request"] = {
-                              "status": "passed" if response.status == 200 and parsed_organic_like else ("blocked_or_challenge" if is_blocked else "no_usable_results"),
+                              "status": "passed" if response.status == 200 and parsed_organic_like else ("blocked_or_challenge" if is_blocked else ("consent_page" if is_consent else "no_usable_results")),
                               "http_status": response.status,
                               "latency_ms": elapsed,
+                              "final_url_without_query": safe_final_url,
+                              "content_type": response.headers.get("Content-Type", "").split(";")[0][:100] or None,
+                              "bytes_inspected": len(raw_body),
+                              "page_title": page_title,
                               "search_page_signature": has_search_shell,
                               "result_markup_signature": has_result,
                               "block_or_challenge_signature": is_blocked,
+                              "consent_page_signature": is_consent,
                               "usable_result_markup_detected": parsed_organic_like,
                           }
                   except HTTPError as exc:
