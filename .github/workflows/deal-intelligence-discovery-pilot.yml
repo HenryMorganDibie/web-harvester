@@ -1,6 +1,9 @@
 name: Deal Intelligence discovery pilot
 
 on:
+  push:
+    paths:
+      - ".github/run-discovery-once"
   workflow_dispatch:
     inputs:
       max_pages:
@@ -78,8 +81,8 @@ jobs:
           set -euo pipefail
           python scripts/deal_intelligence_tavily_pilot.py \
             --deal-intel-root "$GITHUB_WORKSPACE/deal-intelligence" \
-            --max-pages "${{ inputs.max_pages }}" \
-            --freshness-days "${{ inputs.freshness_days }}" \
+            --max-pages "${{ inputs.max_pages || '15' }}" \
+            --freshness-days "${{ inputs.freshness_days || '30' }}" \
             --output "$RUNNER_TEMP/deal-intelligence-discovery.json"
           python - "$RUNNER_TEMP/deal-intelligence-discovery.json" <<'PY'
           import json, os, sys
