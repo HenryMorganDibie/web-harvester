@@ -272,8 +272,9 @@ def parse_article(markup: str) -> dict:
         pass
     title, paragraphs, meta = parser.result()
     structured = _jsonld_article(markup)
-    if not title:
-        title = structured.get("title") or ""
+    if structured.get("title"):
+        # Structured publisher headline is generally more article-specific than a generic page title.
+        title = structured["title"]
     if not paragraphs and structured.get("body"):
         paragraphs = [p.strip() for p in re.split(r"(?<=[.!?])\s+", structured["body"]) if p.strip()]
     deal_terms = re.compile(
