@@ -64,7 +64,7 @@ class DiscoveryPilotTests(unittest.TestCase):
         <body><nav>Fintech Fintech Fintech</nav>
         <article><p>South African biotech company Immobazyme raised a funding round.</p>
         <p>The investment supports biologics manufacturing.</p></article>
-        <aside>Fintech payments fintech loans fintech</aside></body></html>
+        <aside><p>Fintech payments fintech loans fintech.</p></aside></body></html>
         """
         article = parse_article(html)
         self.assertIn("Immobazyme", article["title"])
