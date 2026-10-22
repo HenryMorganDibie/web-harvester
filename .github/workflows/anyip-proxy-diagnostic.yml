@@ -93,12 +93,98 @@ jobs:
                           is_blocked = any(term in lower for term in blocked_terms)
                           is_consent = any(term in lower for term in consent_terms)
                           has_search_shell = 'id="search"' in lower or "id='search'" in lower
+                          # Record limited HTML structure, never the raw response.
+                          from html.parser import HTMLParser
+                          from urllib.parse import parse_qs, urlsplit
+
+                          class SafePageInspector(HTMLParser):
+                              def __init__(self):
+                                  super().__init__(convert_charrefs=True)
+                                  self.title_depth = 0
+                                  self.anchor_depth = 0
+                                  self.title_parts = []
+                                  self.anchor_parts = []
+                                  self.anchors = []
+                                  self.h1_depth = 0
+                                  self.h1_parts = []
+                                  self.headings = []
+                                  self.form_actions = []
+                                  self.meta_robots = []
+
+                              def handle_starttag(self, tag, attrs):
+                                  attrs = dict(attrs)
+                                  if tag == "title":
+                                      self.title_depth += 1
+                                  if tag == "a":
+                                      self.anchor_depth += 1
+                                      self.anchor_parts = []
+                                      self.anchor_href = attrs.get("href", "")
+                                  if tag == "h1":
+                                      self.h1_depth += 1
+                                      self.h1_parts = []
+                                  if tag == "form" and attrs.get("action"):
+                                      action = urlsplit(attrs["action"])
+                                      self.form_actions.append((action.netloc + action.path)[:160])
+                                  if tag == "meta" and attrs.get("name", "").lower() in ("robots", "googlebot"):
+                                      self.meta_robots.append((attrs.get("name", "") + "=" + attrs.get("content", ""))[:160])
+
+                              def handle_endtag(self, tag):
+                                  if tag == "title" and self.title_depth:
+                                      self.title_depth -= 1
+                                  if tag == "a" and self.anchor_depth:
+                                      self.anchor_depth -= 1
+                                      self.anchors.append((getattr(self, "anchor_href", ""), " ".join(self.anchor_parts)))
+                                  if tag == "h1" and self.h1_depth:
+                                      self.h1_depth -= 1
+                                      heading = " ".join(self.h1_parts).strip()
+                                      if heading:
+                                          self.headings.append(heading[:120])
+
+                              def handle_data(self, data):
+                                  if self.title_depth:
+                                      self.title_parts.append(data)
+                                  if self.anchor_depth:
+                                      self.anchor_parts.append(data.strip())
+                                  if self.h1_depth:
+                                      self.h1_parts.append(data.strip())
+
+                          inspector = SafePageInspector()
+                          inspector.feed(body)
+                          page_title = re.sub(r"\s+", " ", " ".join(inspector.title_parts)).strip()[:180] or None
+
+                          def safe_external_destination(href):
+                              if not href:
+                                  return None
+                              parsed = urlsplit(href)
+                              if parsed.path == "/url" and parsed.netloc.endswith("google.com"):
+                                  params = parse_qs(parsed.query)
+                                  href = (params.get("q") or params.get("url") or [""])[0]
+                                  parsed = urlsplit(href)
+                              elif href.startswith("/url?"):
+                                  params = parse_qs(parsed.query)
+                                  href = (params.get("q") or params.get("url") or [""])[0]
+                                  parsed = urlsplit(href)
+                              if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                                  return None
+                              host = parsed.netloc.lower()
+                              if host == "google.com" or host.endswith(".google.com") or host.endswith(".googleusercontent.com"):
+                                  return None
+                              return (host + parsed.path[:100])[:180]
+
+                          external_links = []
+                          seen_destinations = set()
+                          for href, anchor_text in inspector.anchors:
+                              destination = safe_external_destination(href)
+                              label = re.sub(r"\s+", " ", anchor_text).strip()[:100]
+                              if destination and label and destination not in seen_destinations:
+                                  seen_destinations.add(destination)
+                                  external_links.append({"text": label, "destination_without_query": destination})
+                              if len(external_links) >= 12:
+                                  break
+
                           has_result = bool(re.search(r"""class=["'][^"']*(?:MjjYud|g)[^"']*["']""", body))
                           parsed_organic_like = has_search_shell and has_result and not is_blocked and not is_consent
-                          title_match = re.search(r"<title[^>]*>(.*?)</title\s*>", body, re.IGNORECASE | re.DOTALL)
-                          page_title = re.sub(r"\s+", " ", title_match.group(1)).strip()[:180] if title_match else None
                           # Keep only URL origin/path; do not persist query parameters.
-                          from urllib.parse import urlsplit
                           final = urlsplit(response.geturl())
                           safe_final_url = f"{final.scheme}://{final.netloc}{final.path[:160]}"
                           report["search_request"] = {
@@ -109,6 +195,11 @@ jobs:
                               "content_type": response.headers.get("Content-Type", "").split(";")[0][:100] or None,
                               "bytes_inspected": len(raw_body),
                               "page_title": page_title,
+                              "h1_headings": inspector.headings[:5],
+                              "form_action_paths": inspector.form_actions[:5],
+                              "robots_meta": inspector.meta_robots[:5],
+                              "external_link_count_sampled": len(external_links),
+                              "external_link_samples": external_links,
                               "search_page_signature": has_search_shell,
                               "result_markup_signature": has_result,
                               "block_or_challenge_signature": is_blocked,
