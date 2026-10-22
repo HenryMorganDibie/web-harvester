@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       max_pages:
-        description: "Maximum source pages fetched through anyIP"
+        description: "Maximum recent source pages fetched through anyIP"
         required: true
         default: "10"
         type: choice
@@ -12,6 +12,15 @@ on:
           - "5"
           - "10"
           - "15"
+      freshness_days:
+        description: "Only consider publisher pages from the last N days"
+        required: true
+        default: "30"
+        type: choice
+        options:
+          - "7"
+          - "14"
+          - "30"
 
 permissions:
   contents: read
@@ -45,6 +54,9 @@ jobs:
       - name: Install Deal Intelligence dependencies
         run: python -m pip install --disable-pip-version-check -r deal-intelligence/requirements.txt
 
+      - name: Run offline regression tests before any network discovery
+        run: python scripts/test_deal_intelligence_tavily_pilot.py
+
       - name: Validate credentials without printing them
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
@@ -61,11 +73,13 @@ jobs:
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          DEAL_INTEL_API_BASE_URL: https://deal-intelligence-api.vercel.app
         run: |
           set -euo pipefail
           python scripts/deal_intelligence_tavily_pilot.py \
             --deal-intel-root "$GITHUB_WORKSPACE/deal-intelligence" \
             --max-pages "${{ inputs.max_pages }}" \
+            --freshness-days "${{ inputs.freshness_days }}" \
             --output "$RUNNER_TEMP/deal-intelligence-discovery.json"
           python - "$RUNNER_TEMP/deal-intelligence-discovery.json" <<'PY'
           import json, os, sys
