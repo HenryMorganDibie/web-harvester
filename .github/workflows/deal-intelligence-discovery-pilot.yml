@@ -1,6 +1,9 @@
 name: Deal Intelligence discovery pilot
 
 on:
+  push:
+    paths:
+      - ".github/run-discovery-once"
   workflow_dispatch:
     inputs:
       max_pages:
