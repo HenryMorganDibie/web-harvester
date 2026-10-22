@@ -1,0 +1,53 @@
+name: Tavily live smoke test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/tavily-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tavily-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run one Tavily query
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAVILY_API_KEY:-}" ]; then
+            echo "::error::TAVILY_API_KEY GitHub Actions secret is missing"
+            exit 1
+          fi
+          go build -o /tmp/harvester ./cmd/harvester
+          /tmp/harvester -config configs/config.example.yaml -mode tavily -queries "Go programming language official documentation" > /tmp/tavily.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("/tmp/tavily.jsonl")
+          lines = [line for line in path.read_text().splitlines() if line.strip()]
+          if not lines:
+              raise SystemExit("FAIL: Tavily run emitted no JSONL records")
+          records = [json.loads(line) for line in lines]
+          def get_organic(record):
+              for key in ("organic", "organic_results", "organicResults"):
+                  value = record.get(key)
+                  if isinstance(value, list):
+                      return value
+              return []
+          total = sum(len(get_organic(record)) for record in records)
+          if total == 0:
+              raise SystemExit("FAIL: query completed but no organic results were mapped")
+          print(f"PASS: {len(records)} record(s), {total} mapped organic result(s); API key not printed.")
+          print("Query:", records[0].get("query", "(query field not present)"))
+          print("First result title:", (get_organic(records[0])[0].get("title", "(title missing)") if get_organic(records[0]) else "(none)"))
+          PY
