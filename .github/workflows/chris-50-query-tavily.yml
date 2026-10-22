@@ -1,0 +1,230 @@
+name: Chris 50-Query Search Benchmark (Tavily)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/chris-50-query-tavily.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate Tavily credential
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          set +x
+          [ -n "${TAVILY_API_KEY:-}" ] || { echo "::error::TAVILY_API_KEY secret is missing."; exit 1; }
+          echo "Tavily credential is configured; value will not be printed."
+
+      - name: Test and build
+        run: |
+          go vet ./...
+          go test ./...
+          go build -o "$RUNNER_TEMP/harvester" ./cmd/harvester
+
+      - name: Execute the same 25 easy and 25 difficult queries via Tavily
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          out="$RUNNER_TEMP/chris-50-query-tavily"
+          mkdir -p "$out"
+
+          python3 - "$out" <<'PY'
+          import json, os, sys
+          out = sys.argv[1]
+          easy = [
+            ("E01", "Today in history"),
+            ("E02", "T-Mobile"),
+            ("E03", "Bank of America"),
+            ("E04", "latest NASA news"),
+            ("E05", "how does solar energy work"),
+            ("E06", "OpenAI API documentation"),
+            ("E07", "African fintech funding news"),
+            ("E08", "Nigeria inflation latest"),
+            ("E09", "World Bank"),
+            ("E10", "Python official documentation"),
+            ("E11", "what is the capital of Portugal"),
+            ("E12", "Microsoft Azure pricing"),
+            ("E13", "latest electric vehicle news"),
+            ("E14", "European Central Bank interest rates"),
+            ("E15", "how does a heat pump work"),
+            ("E16", "Google Maps"),
+            ("E17", "African Development Bank"),
+            ("E18", "Go programming language concurrency"),
+            ("E19", "World Cup 2026 host cities"),
+            ("E20", "United Nations climate report"),
+            ("E21", "Samsung Galaxy support"),
+            ("E22", "Lagos public transport news"),
+            ("E23", "Amazon Web Services documentation"),
+            ("E24", "history of the printing press"),
+            ("E25", "current EUR to CNY exchange rate"),
+          ]
+          hard = [
+            ("H01", "Flight from Shanghai to Brussels"),
+            ("H02", "Flights Shanghai Pudong to Brussels nonstop"),
+            ("H03", "Cheapest flight from Shanghai to Brussels next month"),
+            ("H04", "Shanghai to Brussels flight duration with one stop"),
+            ("H05", "Shanghai Hongqiao to Brussels flight options"),
+            ("H06", "Round trip flights Shanghai to Brussels in business class"),
+            ("H07", "Shanghai to Brussels flights with baggage included"),
+            ("H08", "Flights from Shanghai to Brussels with one layover in Doha"),
+            ("H09", "Flights from Shanghai to Brussels via Istanbul"),
+            ("H10", "Shanghai to Brussels flight prices for December"),
+            ("H11", "Shanghai to Brussels flight options arriving before 9 AM"),
+            ("H12", "Shanghai to Brussels flights with a short layover"),
+            ("H13", "Shanghai to Brussels flights with no overnight layover"),
+            ("H14", "One way flight Shanghai to Brussels this Friday"),
+            ("H15", "Return flight Brussels to Shanghai two weeks after departure"),
+            ("H16", "Shanghai to Brussels flights operated by Air China"),
+            ("H17", "Shanghai to Brussels flights operated by Lufthansa"),
+            ("H18", "Shanghai to Brussels flights with Star Alliance airlines"),
+            ("H19", "Shanghai to Brussels flight with checked baggage and seat selection"),
+            ("H20", "Compare flight itineraries Shanghai to Brussels under 16 hours"),
+            ("H21", "Shanghai to Brussels flights departing after 6 PM"),
+            ("H22", "Shanghai to Brussels flights with a connection in Singapore"),
+            ("H23", "Shanghai to Brussels flights with a connection in Frankfurt"),
+            ("H24", "Shanghai to Brussels flights for two adults and one child"),
+            ("H25", "Shanghai to Brussels flights with flexible ticket changes"),
+          ]
+          queries = ([{"id": i, "category": "easy_mixed", "query": q} for i, q in easy] +
+                     [{"id": i, "category": "difficult_flight", "query": q} for i, q in hard])
+          assert len(queries) == 50 and len({q["id"] for q in queries}) == 50
+          with open(os.path.join(out, "queries.json"), "w", encoding="utf-8") as f:
+            json.dump(queries, f, ensure_ascii=False, indent=2)
+          config = {
+            "mode": "tavily",
+            "queries": [q["query"] for q in queries],
+            "queue_backend": "memory",
+            "concurrency": 1,
+            "max_retries": 0,
+            "rate_per_proxy_rps": 0.2,
+            "rate_burst": 1,
+            "adaptive_rate": False,
+            "proxies": [],
+            "request_timeout": "30s",
+            "output_path": os.path.join(out, "harvester-results.jsonl"),
+            "report_interval": "5s"
+          }
+          with open(os.path.join(out, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(config, f)
+          PY
+
+          "$RUNNER_TEMP/harvester" -config "$out/config.json" -mode tavily > "$out/stdout.log" 2> "$out/stderr.log"
+
+          python3 - "$out" <<'PY'
+          import csv, json, math, os, statistics, sys
+          from datetime import datetime, timezone
+          out = sys.argv[1]
+          queries = json.load(open(os.path.join(out, "queries.json"), encoding="utf-8"))
+          path = os.path.join(out, "harvester-results.jsonl")
+          by_query = {}
+          if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+              for line in f:
+                if line.strip():
+                  row = json.loads(line)
+                  by_query[row.get("query", "")] = row
+          records, safe_results = [], []
+          for q in queries:
+            raw = by_query.get(q["query"])
+            organic = (raw or {}).get("organic") or []
+            latency = (raw or {}).get("latency_ms")
+            ok = bool(raw and organic)
+            records.append({
+              **q, "status": "success" if ok else "failed",
+              "fetch_latency_ms": latency if latency is not None else "",
+              "organic_result_count": len(organic),
+              "answer_present": bool((raw or {}).get("featured_snippet")),
+              "error_note": "" if ok else "No mapped organic results returned."
+            })
+            if raw:
+              safe = dict(raw)
+              for field in ("proxy_used", "run_id", "raw_body"):
+                safe.pop(field, None)
+              safe["benchmark_query_id"] = q["id"]
+              safe["benchmark_category"] = q["category"]
+              safe_results.append(safe)
+          with open(os.path.join(out, "query-report.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["id","category","query","status","fetch_latency_ms","organic_result_count","answer_present","error_note"])
+            w.writeheader(); w.writerows(records)
+          with open(os.path.join(out, "results.jsonl"), "w", encoding="utf-8") as f:
+            for r in safe_results:
+              f.write(json.dumps(r, ensure_ascii=False) + "\n")
+          def pct(vals, p):
+            return sorted(vals)[max(0, math.ceil(p*len(vals))-1)] if vals else None
+          def group(cat):
+            rows = [r for r in records if r["category"] == cat]
+            vals = [int(r["fetch_latency_ms"]) for r in rows if r["fetch_latency_ms"] != ""]
+            return {
+              "queries": len(rows),
+              "successful_records": sum(r["status"] == "success" for r in rows),
+              "failed_records": sum(r["status"] != "success" for r in rows),
+              "median_fetch_latency_ms": statistics.median(vals) if vals else None,
+              "p95_fetch_latency_ms": pct(vals, .95),
+              "mean_organic_results": round(statistics.mean([r["organic_result_count"] for r in rows]), 2) if rows else None
+            }
+          vals = [int(r["fetch_latency_ms"]) for r in records if r["fetch_latency_ms"] != ""]
+          summary = {
+            "benchmark": "Chris 50-query benchmark via Tavily Search API",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "provider": "Tavily Search API, basic depth, up to 10 results per query",
+            "total_queries": len(records),
+            "successful_records": sum(r["status"] == "success" for r in records),
+            "failed_records": sum(r["status"] != "success" for r in records),
+            "median_fetch_latency_ms": statistics.median(vals) if vals else None,
+            "p95_fetch_latency_ms": pct(vals, .95),
+            "by_category": {"easy_mixed": group("easy_mixed"), "difficult_flight": group("difficult_flight")},
+            "limitations": [
+              "This is a Tavily API search benchmark, not direct Google SERP scraping.",
+              "It does not measure Google AI Overviews, Google-specific SERP modules, or anyIP proxy performance.",
+              "A result record counts as successful only when at least one organic result is mapped."
+            ],
+            "privacy_note": "API keys, proxy metadata, config and raw response bodies are excluded from the artifact."
+          }
+          with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+          print(f"Completed report: {summary['successful_records']}/50 queries returned mapped organic results.")
+          print("Easy:", summary["by_category"]["easy_mixed"]["successful_records"], "/25")
+          print("Difficult flight:", summary["by_category"]["difficult_flight"]["successful_records"], "/25")
+          PY
+
+          rm -f "$out/config.json" "$out/stdout.log" "$out/stderr.log" "$out/harvester-results.jsonl"
+          cd "$out"
+          zip -q chris-50-query-tavily.zip queries.json query-report.csv results.jsonl summary.json
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chris-50-query-tavily
+          path: ${{ runner.temp }}/chris-50-query-tavily/chris-50-query-tavily.zip
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Require at least one usable result and all 50 report rows
+        if: success()
+        run: |
+          python3 - "$RUNNER_TEMP/chris-50-query-tavily/summary.json" <<'PY'
+          import json, sys
+          summary = json.load(open(sys.argv[1], encoding="utf-8"))
+          if summary.get("total_queries") != 50:
+            raise SystemExit("Expected exactly 50 report rows.")
+          if summary.get("successful_records", 0) == 0:
+            raise SystemExit("No usable search results; do not treat this benchmark as successful.")
+          print("Report validation passed. See artifact for per-query outcomes.")
+          PY
