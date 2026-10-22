@@ -17,7 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import httpx
 
 USER_AGENT = "DealIntelligenceDiscoveryPilot/2.0"
-API_DEFAULT = "https://deal-intelligence-api.vercel.app"
+API_DEFAULT = "https://deal-intelligence-api-henry-dibie-s-projects.vercel.app"
 QUERY_TEMPLATES = [
     "Africa startup funding round investment raises venture capital",
     "African private equity acquisition buyout stake transaction",
