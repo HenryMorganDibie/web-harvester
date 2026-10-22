@@ -139,6 +139,8 @@ class ArticleParser(HTMLParser):
         self.in_paragraph = False
         self.paragraph_parts = []
         self.paragraphs = []
+        self.article_paragraphs = []
+        self.main_paragraphs = []
         self.title_depth = 0
         self.title_parts = []
         self.meta = {}
@@ -182,6 +184,10 @@ class ArticleParser(HTMLParser):
             value = re.sub(r"\s+", " ", " ".join(self.paragraph_parts)).strip()
             if value:
                 self.paragraphs.append(value)
+                if self.article_depth:
+                    self.article_paragraphs.append(value)
+                if self.main_depth:
+                    self.main_paragraphs.append(value)
             self.paragraph_parts = []
             self.in_paragraph = False
 
@@ -197,9 +203,11 @@ class ArticleParser(HTMLParser):
             self.paragraph_parts.append(value)
 
     def result(self):
-        paragraphs = self.paragraphs
-        # Prefer <article> / <main> extraction when present; fallback remains paragraph-only.
+        # Prefer the semantic article body, then main content, then paragraph-only fallback.
+        paragraphs = self.article_paragraphs or self.main_paragraphs or self.paragraphs
         title = re.sub(r"\s+", " ", " ".join(self.title_parts)).strip()
+        if not title:
+            title = self.meta.get("og:title", "")
         return title[:300], paragraphs[:120], self.meta
 
 
