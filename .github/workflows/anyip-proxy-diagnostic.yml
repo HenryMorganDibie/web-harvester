@@ -2,6 +2,10 @@ name: anyIP Proxy and Search Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/anyip-proxy-diagnostic.yml'
 
 permissions:
   contents: read
