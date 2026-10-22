@@ -383,8 +383,8 @@ def main():
                 # Sector must be supported by the headline or article lead, not unrelated page chrome.
                 from src.engines.deals import classify_sector
                 focused_sector = classify_sector(" ".join((title, lead[:900])))
-                if focused_sector:
-                    deal["sector"] = focused_sector
+                # Never preserve a sector inferred from broad search snippets if the article lead does not support it.
+                deal["sector"] = focused_sector
                 candidates.append({
                     "deal": deal, "freshness_status": item["freshness_status"],
                     "source": {"title": title[:500], "url": item["url"], "publisher": item["publisher"],
