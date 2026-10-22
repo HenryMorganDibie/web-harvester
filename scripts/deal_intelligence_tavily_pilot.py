@@ -393,22 +393,32 @@ def main():
                 item["page_fetch_status"] = "fetched"
                 item["article_paragraph_count"] = article["paragraph_count"]
                 fetched_day = parse_date(article.get("published_date"))
-                # Publisher metadata outranks search metadata, but must still pass the freshness gate.
                 if fetched_day:
                     item["publisher_published_day"] = fetched_day.isoformat()
                     item["published_day"] = fetched_day.isoformat()
+                    item["date_basis"] = "publisher"
                     item["freshness_status"] = freshness_status(fetched_day, today=today, days=args.freshness_days)[0]
+                else:
+                    # Search-index dates help prioritize results but are not publisher-verified dates.
+                    item["date_basis"] = "search_result" if parse_date(item.get("published_date")) else "unknown"
                 title = item.get("page_title") or item["title"]
                 lead = article.get("lead") or ""
-                # Avoid page-wide sidebar/related-story contamination that caused bad sector labels.
-                evidence = "\n".join(part for part in (title, item.get("search_snippet", ""), lead) if part)
+                # Search snippets alone must never create a deal from an unrelated publisher page.
+                evidence = "\n".join(part for part in (title, lead) if part)
                 item["page_evidence_excerpt"] = evidence[:1600]
                 if item["freshness_status"] != "recent":
                     item["candidate_status"] = "skipped_not_recent_after_publisher_date_check"
                     continue
+                if len(lead) < 80:
+                    item["candidate_status"] = "insufficient_article_body_evidence"
+                    continue
+                deal_evidence = "\n".join(part for part in (title, lead[:2200]) if part)
+                if not re.search(r"\b(raise|raises|raised|raising|funding|fundraise|fundraising|investment|invests|invested|acquires|acquired|acquisition|merger|financing|financed|loan|facility|levée|rachat|acquiert|investissement|financement|aquisição|financiamento|investimento)\b", deal_evidence, re.IGNORECASE):
+                    item["candidate_status"] = "no_transaction_language_in_publisher_body"
+                    continue
                 deal = extract_deal(
-                    title, "\n".join(part for part in (item.get("search_snippet", ""), lead[:2200]) if part),
-                    published=item["published_day"], publisher=item["publisher"], url=item["url"], africa_source=True,
+                    title, deal_evidence,
+                    published=item.get("publisher_published_day") or item.get("published_day"), publisher=item["publisher"], url=item["url"], africa_source=True,
                 )
                 if not deal:
                     item["candidate_status"] = "no_deal_extracted"
@@ -421,7 +431,9 @@ def main():
                 candidates.append({
                     "deal": deal, "freshness_status": item["freshness_status"],
                     "source": {"title": title[:500], "url": item["url"], "publisher": item["publisher"],
-                               "published_date": item["published_day"], "matched_queries": item["matched_queries"],
+                               "published_date": item.get("publisher_published_day") or item.get("published_day"),
+                               "date_basis": item.get("date_basis", "unknown"),
+                               "matched_queries": item["matched_queries"],
                                "page_fetch_status": item["page_fetch_status"],
                                "evidence_excerpt": item.get("page_evidence_excerpt", "")[:1200]},
                     "review_status": "candidate_pending_database_deduplication",
@@ -444,6 +456,7 @@ def main():
         "deal_candidates_extracted": len(candidates),
         "matched_existing_database": sum(c["review_status"] == "already_in_database" for c in candidates),
         "potentially_new_for_human_review": sum(c["review_status"] == "potentially_new_needs_human_review" for c in candidates),
+        "needs_date_confirmation": sum(c["review_status"] == "needs_date_confirmation" for c in candidates),
         "not_eligible_as_new": sum(c["review_status"] == "not_eligible_as_new" for c in candidates),
         "elapsed_seconds": round(time.monotonic() - start, 2),
     }
@@ -464,7 +477,8 @@ def main():
             "A potentially-new label means no match was found in the complete visible canonical product deal set; it is not analyst-verified.",
             "The public API does not expose hidden or merged audit-only rows; their canonical visible records should be present in the product set.",
             "The pilot does not write to production. Human review is required before ingestion.",
-            "Only dated recent publisher pages can be labelled potentially new.",
+            "Only recent candidates with publisher-declared publication dates can be labelled potentially new; search-index dates require confirmation.",
+            "Search snippets alone are never sufficient evidence to create a deal candidate.",
             "This bounded discovery run is not comprehensive Bloomberg-equivalent coverage.",
         ],
     }
