@@ -452,6 +452,18 @@ go run ./cmd/harvester -config configs/config.example.yaml -mode mock">Copy</but
     <div class="eyebrow">Evidence</div>
     <h2>Measured, not claimed.</h2>
     <p class="sub">Reproducible with one command, and documented alongside what is still unproven.</p>
+    <div class="card reveal" style="margin:24px 0">
+      <div class="eyebrow">Search integration evaluation · 2026</div>
+      <h3 style="font-size:22px;margin:10px 0 8px">50 queries. 49 returned mapped organic results.</h3>
+      <p style="color:var(--muted);font-size:14.5px;margin:0 0 18px">A 50-query evaluation split evenly between easy and difficult searches, including a complex multi-leg flight query.</p>
+      <div class="stats" style="margin-top:0">
+        <div class="stat"><div class="n">98%</div><div class="l">Queries returned at least one mapped organic result</div><div class="footnote" style="text-align:left">49 of 50 queries</div></div>
+        <div class="stat"><div class="n">1.39 s</div><div class="l">Median end-to-end latency</div></div>
+        <div class="stat"><div class="n">4.37 s</div><div class="l">95th-percentile latency</div></div>
+      </div>
+      <p style="color:var(--muted);font-size:14.5px;margin:18px 0 0"><b style="color:var(--text)">Scope:</b> This test used Tavily-backed search. It measures result mapping and latency, not semantic relevance, answer correctness, direct Google scraping, or proxy performance. One difficult query returned no mapped organic results.</p>
+      <p style="margin:16px 0 0"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester#recent-search-evaluation" target="_blank" rel="noopener">Read the search evaluation and limitations on GitHub →</a></p>
+    </div>
     <div class="evidence">
       <div class="log reveal"><span class="k">$</span> go run ./cmd/loadtest -duration 90m -sample-interval 2m -concurrency 200
 
