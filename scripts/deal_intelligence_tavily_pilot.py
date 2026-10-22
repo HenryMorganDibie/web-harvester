@@ -21,14 +21,14 @@ import httpx
 USER_AGENT = "DealIntelligenceDiscoveryPilot/2.0"
 API_DEFAULT = "https://deal-intelligence-api-henry-dibie-s-projects.vercel.app"
 QUERY_TEMPLATES = [
-    "Africa startup funding round investment raises venture capital",
-    "African private equity acquisition buyout stake transaction",
-    "Africa private capital fund first close final close fundraising",
-    "Africa DFI investment financing loan facility company",
-    "African company acquisition merger stake investment announced",
-    "Afrique startup levée de fonds acquisition investissement capital",
-    "África empresa financiamento investimento aquisição capital de risco",
-    "African company receives investment from IFC BII Proparco AfDB",
+    "African startup raises funding round investment October 2026",
+    "African startup secures investment funding round October 2026",
+    "Africa private equity acquisition deal closes announced October 2026",
+    "African company financing loan facility IFC AfDB investment October 2026",
+    "site:techcabal.com startup raises funding Africa October 2026",
+    "site:disruptafrica.com funding investment acquisition October 2026",
+    "Afrique levée de fonds startup investissement acquisition octobre 2026",
+    "startup africana capta financiamento investimento aquisição outubro 2026",
 ]
 MAX_RESULTS_PER_QUERY = 10
 AFRICAN_ISO2 = {"DZ", "AO", "BJ", "BW", "BF", "BI", "CV", "CM", "CF", "TD", "KM", "CG", "CD", "CI", "DJ", "EG", "GQ", "ER", "SZ", "ET", "GA", "GM", "GH", "GN", "GW", "KE", "LS", "LR", "LY", "MG", "MW", "ML", "MR", "MU", "MA", "MZ", "NA", "NE", "NG", "RW", "ST", "SN", "SC", "SL", "SO", "ZA", "SS", "SD", "TZ", "TG", "TN", "UG", "ZM", "ZW", "EH"}
@@ -160,6 +160,14 @@ def related_fund_matches(candidate: dict, existing: list[dict]) -> list[dict]:
         if abs((candidate_day - other_day).days) <= 365:
             matches.append(row)
     return matches
+
+
+def is_social_platform(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == domain or host.endswith("." + domain) for domain in (
+        "facebook.com", "instagram.com", "linkedin.com", "youtube.com",
+        "x.com", "twitter.com", "tiktok.com",
+    ))
 
 
 def freshness_status(published, today: date | None = None, days: int = FRESHNESS_DAYS) -> tuple[str, date | None]:
@@ -498,15 +506,20 @@ def main():
         item["freshness_cutoff"] = since.isoformat()
         item["page_fetch_status"] = "not_selected"
 
-    # Process newest dated results first; do not let old/undated hits consume the fetch budget.
+    # Process newest dated results first; social posts are usually inaccessible or too thin to verify.
     recent_results = [r for r in results if r["freshness_status"] == "recent"]
     recent_results.sort(key=lambda r: (r["published_day"] or "", r["url"]), reverse=True)
+    for item in recent_results:
+        if is_social_platform(item["url"]):
+            item["page_fetch_status"] = "skipped_social_platform"
+            item["candidate_status"] = "skipped_social_platform"
+    fetchable_results = [r for r in recent_results if not is_social_platform(r["url"])]
     fetch_opts = {"timeout": PAGE_TIMEOUT, "follow_redirects": True}
     if proxy_url:
         fetch_opts["proxy"] = proxy_url
     candidates = []
     with httpx.Client(**fetch_opts, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}) as client:
-        for item in recent_results[:args.max_pages]:
+        for item in fetchable_results[:args.max_pages]:
             item["page_fetch_status"] = "fetch_failed"
             try:
                 response = client.get(item["url"])
@@ -612,8 +625,9 @@ def main():
         "queries_failed": sum(q["status"] != "ok" for q in query_stats),
         "unique_urls_discovered": len(results),
         "recent_dated_urls": len(recent_results),
-        "source_pages_attempted": min(len(recent_results), args.max_pages),
-        "source_pages_fetched": sum(r["page_fetch_status"] == "fetched" for r in recent_results[:args.max_pages]),
+        "social_urls_skipped": sum(is_social_platform(r["url"]) for r in recent_results),
+        "source_pages_attempted": min(len(fetchable_results), args.max_pages),
+        "source_pages_fetched": sum(r["page_fetch_status"] == "fetched" for r in fetchable_results[:args.max_pages]),
         "fetch_errors_by_type": fetch_errors,
         "production_database_records_loaded": len(database),
         "deal_candidates_extracted": len(candidates),
@@ -634,7 +648,7 @@ def main():
                                 "dataset_scope": "complete visible canonical product deals from /api/deals",
                                 "complete_visible_snapshot_required": True, "writes_performed": False},
         "limits": {"queries": len(queries), "max_results_per_query": MAX_RESULTS_PER_QUERY,
-                   "max_source_pages_fetched": args.max_pages, "proxy_configured": bool(proxy_url),
+                   "max_source_pages_fetched": args.max_pages, "social_domains_skipped": True, "proxy_configured": bool(proxy_url),
                    "proxy_credentials_written": False, "raw_html_written": False},
         "summary": summary, "queries": query_stats, "results": results, "deal_candidates": candidates,
         "limitations": [
