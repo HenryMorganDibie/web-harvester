@@ -73,6 +73,37 @@ proxies, no network access required.
 
 - **Recent search evaluation**: a 50-query mixed-difficulty run returned at least one mapped organic result for 49 queries (98%); median latency was 1.39s and p95 was 4.37s. See [Recent search evaluation](#recent-search-evaluation) for evaluation details.
 
+## US proxy benchmark
+
+A two-phase benchmark run on 19–20 October 2026 used Web Harvester to measure US state targeting and session behaviour across residential and mobile proxy pools.
+
+### State targeting
+
+| Measure | Residential | Mobile |
+|---|---:|---:|
+| Requests tested | 1,530 | 1,530 |
+| Exits geolocated to the requested state | 1,502 (98.2%) | 1,312 (85.8%) |
+
+The mobile result should be interpreted cautiously: mobile carriers often route traffic through regional gateways, so IP geolocation may place an exit in a different state from the device or session's intended location. State-level results are a measurement of observed exit geolocation, not a guarantee of physical device location.
+
+### Sticky sessions vs. rotation
+
+The protected-page test used 100 requests per arm across four alternating blocks, with residential and mobile results measured separately.
+
+| Measure | Result |
+|---|---:|
+| Rotating sessions: usable responses | 1,175/1,200 (97.9%) |
+| Sticky sessions, renewed every 15 requests: usable responses | 600/600 (100%) |
+| Sticky-session latency advantage | About 100–230 ms across the six comparisons |
+
+In these runs, renewed sticky sessions were faster in all six comparisons. A single long-lived sticky session performed substantially worse: only 16–49 of 100 responses were usable per run before the target returned HTTP 4xx responses. This reflects the tested target's protection behaviour, not a universal proxy-provider result.
+
+### Method
+
+Requests ran from GitHub-hosted runners in US Azure regions. Residential and mobile pools were evaluated separately; each request used a fresh tunnel, no retries were used, and failures were counted rather than hidden. IP addresses were hashed in the output, and credentials were excluded. Geolocation was checked against ipinfo.io.
+
+These are dated, workload-specific observations, not guarantees for other sites, proxy networks, locations or traffic patterns. The benchmark demonstrates Web Harvester's measurement workflow as well as the results.
+
 ## Recent search evaluation
 
 A recent 50-query evaluation covered 25 general, mixed-topic searches and 25 more difficult flight-related searches, including a Shanghai-to-Brussels query.
