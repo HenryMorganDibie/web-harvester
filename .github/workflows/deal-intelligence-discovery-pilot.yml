@@ -1,0 +1,88 @@
+name: Deal Intelligence discovery pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Maximum source pages fetched through anyIP"
+        required: true
+        default: "10"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "15"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-intelligence-discovery-pilot
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Web Harvester
+        uses: actions/checkout@v4
+
+      - name: Check out Deal Intelligence extractor
+        uses: actions/checkout@v4
+        with:
+          repository: HenryMorganDibie/deal-intelligence-agent
+          ref: main
+          path: deal-intelligence
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: deal-intelligence/requirements.txt
+
+      - name: Install Deal Intelligence dependencies
+        run: python -m pip install --disable-pip-version-check -r deal-intelligence/requirements.txt
+
+      - name: Validate credentials without printing them
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${TAVILY_API_KEY:-}" || { echo "::error::TAVILY_API_KEY secret is missing"; exit 1; }
+          test -n "${HARVESTER_PROXY_URL:-}" || { echo "::error::HARVESTER_PROXY_URL secret is missing"; exit 1; }
+          if [ -n "${IPINFO_TOKEN:-}" ]; then echo "IPINFO_TOKEN configured (not needed for this discovery run)."; else echo "IPINFO_TOKEN not configured; discovery does not require it."; fi
+          echo "Tavily and proxy secrets are present; values are not displayed."
+
+      - name: Run bounded Tavily discovery and source-page pilot
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        run: |
+          set -euo pipefail
+          python scripts/deal_intelligence_tavily_pilot.py \
+            --deal-intel-root "$GITHUB_WORKSPACE/deal-intelligence" \
+            --max-pages "${{ inputs.max_pages }}" \
+            --output "$RUNNER_TEMP/deal-intelligence-discovery.json"
+          python - "$RUNNER_TEMP/deal-intelligence-discovery.json" <<'PY'
+          import json, os, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(json.dumps(data["summary"], ensure_ascii=False))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("# Deal Intelligence discovery pilot\n\n")
+              summary.write("| Measure | Result |\n|---|---:|\n")
+              for key, value in data["summary"].items():
+                  summary.write(f"| {key.replace('_', ' ')} | {value} |\n")
+              summary.write("\nResults are review-only. No production records were changed.\n")
+          PY
+
+      - name: Upload review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deal-intelligence-discovery-review
+          path: ${{ runner.temp }}/deal-intelligence-discovery.json
+          if-no-files-found: error
+          retention-days: 7
