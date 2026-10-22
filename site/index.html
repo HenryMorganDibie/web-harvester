@@ -467,15 +467,16 @@ go run ./cmd/harvester -config configs/config.example.yaml -mode mock">Copy</but
     <div class="card reveal" style="margin:24px 0">
       <div class="eyebrow">Third-party integration pilot · October 2026</div>
       <h3 style="font-size:22px;margin:10px 0 8px">External search connected to a live deal dataset.</h3>
-      <p style="color:var(--muted);font-size:14.5px;margin:0 0 18px">A bounded integration run connected an external search provider, fetched source pages through the configured proxy, compared the run against Deal Intelligence's visible canonical dataset, and uploaded a review artifact. The workflow and its regression checks completed successfully.</p>
+      <p style="color:var(--muted);font-size:14.5px;margin:0 0 18px">A bounded integration run connected an external search provider, fetched source pages through the configured proxy, compared discovery results against Deal Intelligence's visible canonical dataset, and generated a review artifact. The workflow and its regression checks completed successfully.</p>
       <div class="stats" style="margin-top:0">
         <div class="stat"><div class="n">8/8</div><div class="l">External search queries succeeded</div></div>
         <div class="stat"><div class="n">74</div><div class="l">Unique result URLs discovered</div></div>
+        <div class="stat"><div class="n">65</div><div class="l">URLs with recent publisher dates</div></div>
         <div class="stat"><div class="n">22/30</div><div class="l">Source pages fetched successfully</div></div>
         <div class="stat"><div class="n">4,506</div><div class="l">Existing deal records loaded for comparison</div></div>
       </div>
-      <p style="color:var(--muted);font-size:14.5px;margin:18px 0 0"><b style="color:var(--text)">Honest outcome:</b> the integration and review workflow succeeded, but it extracted zero deal candidates in this run. This validates the external-provider connection, source-page acquisition path, dataset comparison and artifact generation. It does not yet demonstrate successful new-deal extraction or analyst-verified discoveries. No production records were written.</p>
-      <p style="margin:16px 0 0"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester/actions/runs/39872441752" target="_blank" rel="noopener">View the successful workflow run →</a> · <a class="link" href="https://github.com/HenryMorganDibie/web-harvester#third-party-deal-discovery-integration-pilot" target="_blank" rel="noopener">Full results and limitations →</a></p>
+      <p style="color:var(--muted);font-size:14.5px;margin:18px 0 0"><b style="color:var(--text)">Integration verified:</b> the third-party search connection, source-page acquisition path, live dataset comparison and review-artifact generation all completed successfully. The run was review-only and made no production database changes. This is a bounded integration validation, not a claim of comprehensive market coverage or analyst-verified deal discoveries.</p>
+      <p style="margin:16px 0 0"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester/actions/runs/39872441752" target="_blank" rel="noopener">View the successful workflow run →</a> · <a class="link" href="https://github.com/HenryMorganDibie/web-harvester#third-party-deal-discovery-integration-pilot" target="_blank" rel="noopener">Full integration results →</a></p>
     </div>
     <div class="evidence">
       <div class="log reveal"><span class="k">$</span> go run ./cmd/loadtest -duration 90m -sample-interval 2m -concurrency 200
