@@ -121,6 +121,45 @@ The evaluation covered both broad everyday searches and more demanding flight-re
 
 Proxy-provider benchmarks are evaluated and reported separately. They measure proxy behaviour such as state targeting, sticky versus rotating sessions, latency, retries and billed traffic; they are not combined with search-result availability or latency figures.
 
+## Third-party deal-discovery integration pilot
+
+On 22 October 2026, Web Harvester completed a bounded discovery run for
+[Deal Intelligence](https://deal-intelligence-app.vercel.app) using Tavily
+as the third-party search provider and the configured proxy for source-page
+fetches. The workflow completed successfully, including its offline regression
+tests, credential validation, search, source-page fetching, database comparison,
+and review-artifact upload.
+
+| Measure | Observed result |
+|---|---:|
+| Third-party search queries | 8/8 succeeded |
+| Unique result URLs discovered | 74 |
+| URLs with recent publisher dates | 65 |
+| Source pages attempted | 30 |
+| Source pages fetched successfully | 22/30 |
+| Existing Deal Intelligence records loaded for comparison | 4,506 |
+| New deal candidates extracted | 0 |
+| Production writes | None |
+
+The fetches that did not succeed returned five HTTP 403 responses, one HTTP 401,
+one connection timeout, and one read timeout. These are reported as acquisition
+outcomes rather than hidden or counted as successful page fetches.
+
+**What this proves:** the third-party search integration returned results, the
+run fetched source pages through the configured proxy, loaded the visible
+canonical Deal Intelligence dataset, and completed the review-only workflow
+without writing to production. The workflow produced a downloadable review
+artifact.
+
+**What it does not prove yet:** this run extracted no deal candidates, so it
+does not establish that the pipeline found a new, verified deal or that
+end-to-end deal extraction is effective. The next engineering task is to
+diagnose why the fetched pages yielded zero candidates before treating this
+as a successful deal-discovery result. This was a bounded pilot, not a
+comprehensive market-coverage test.
+
+[View the successful GitHub Actions run and review artifact](https://github.com/HenryMorganDibie/web-harvester/actions/runs/39872441752).
+
 Full document index: [CAPABILITIES.md](CAPABILITIES.md) (answers to the five
 questions this was built for) · [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)
 (architecture-to-operations checklist) · [RUNBOOK.md](RUNBOOK.md) (what to
