@@ -438,7 +438,7 @@ def main():
 
     sys.path.insert(0, str(Path(args.deal_intel_root).resolve()))
     try:
-        from src.engines.deals import extract_deal, same_transaction, countries_in_text, classify_sector
+        from src.engines.deals import extract_deal, same_transaction, countries_in_text, classify_sector, deal_id
     except Exception as exc:
         raise SystemExit(f"Cannot import Deal Intelligence extractor: {type(exc).__name__}") from exc
 
@@ -580,6 +580,7 @@ def main():
                 # Fund labels are often broad; don't infer a fund's sector from LP examples in the article.
                 focused_sector = classify_sector(title if deal.get("deal_type") == "fund_raise" else " ".join((title, lead[:400])))
                 deal["sector"] = focused_sector
+                deal["id"] = deal_id(deal)
                 candidates.append({
                     "deal": deal, "freshness_status": item["freshness_status"],
                     "source": {"title": title[:500], "url": item["url"], "publisher": item["publisher"],
