@@ -1,0 +1,367 @@
+name: Chris 50-Query Search Benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate configured credentials without printing them
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          PROVIDER_BASE_URL: ${{ vars.PROVIDER_BASE_URL }}
+          ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
+        shell: bash
+        run: |
+          set +x
+          [ -n "$HARVESTER_PROXY_URL" ] || { echo "::error::HARVESTER_PROXY_URL secret is missing."; exit 1; }
+          [ -n "$SERPAPI_KEY" ] || { echo "::error::SERPAPI_KEY secret is missing."; exit 1; }
+          [ -n "$PROVIDER_BASE_URL" ] || { echo "::error::Repository variable PROVIDER_BASE_URL is missing."; exit 1; }
+          echo "Required proxy and SERP-provider configuration is present."
+          if [ -n "$ANYIP_API_KEY" ]; then
+            echo "anyIP usage API credential is present."
+          else
+            echo "anyIP usage snapshots will be skipped because ANYIP_API_KEY is not configured."
+          fi
+
+      - name: Run tests
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Execute 50 queries through Web Harvester and the configured anyIP proxy
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          PROVIDER_BASE_URL: ${{ vars.PROVIDER_BASE_URL }}
+          ANYIP_API_KEY: ${{ secrets.ANYIP_API_KEY }}
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          out="$RUNNER_TEMP/chris-50-query-benchmark"
+          mkdir -p "$out"
+
+          # Query results and reports are written to the artifact, not Actions logs.
+          python3 - "$out" <<'PY'
+          import json
+          import os
+          import sys
+          from urllib.request import Request, urlopen
+          from datetime import datetime, timezone
+
+          out = sys.argv[1]
+          easy = [
+            ("E01", "Today in history"),
+            ("E02", "T-Mobile"),
+            ("E03", "Bank of America"),
+            ("E04", "latest NASA news"),
+            ("E05", "how does solar energy work"),
+            ("E06", "OpenAI API documentation"),
+            ("E07", "African fintech funding news"),
+            ("E08", "Nigeria inflation latest"),
+            ("E09", "World Bank"),
+            ("E10", "Python official documentation"),
+            ("E11", "what is the capital of Portugal"),
+            ("E12", "Microsoft Azure pricing"),
+            ("E13", "latest electric vehicle news"),
+            ("E14", "European Central Bank interest rates"),
+            ("E15", "how does a heat pump work"),
+            ("E16", "Google Maps"),
+            ("E17", "African Development Bank"),
+            ("E18", "Go programming language concurrency"),
+            ("E19", "World Cup 2026 host cities"),
+            ("E20", "United Nations climate report"),
+            ("E21", "Samsung Galaxy support"),
+            ("E22", "Lagos public transport news"),
+            ("E23", "Amazon Web Services documentation"),
+            ("E24", "history of the printing press"),
+            ("E25", "current EUR to CNY exchange rate"),
+          ]
+          hard = [
+            ("H01", "Flight from Shanghai to Brussels"),
+            ("H02", "Flights Shanghai Pudong to Brussels nonstop"),
+            ("H03", "Cheapest flight from Shanghai to Brussels next month"),
+            ("H04", "Shanghai to Brussels flight duration with one stop"),
+            ("H05", "Shanghai Hongqiao to Brussels flight options"),
+            ("H06", "Round trip flights Shanghai to Brussels in business class"),
+            ("H07", "Shanghai to Brussels flights with baggage included"),
+            ("H08", "Flights from Shanghai to Brussels with one layover in Doha"),
+            ("H09", "Flights from Shanghai to Brussels via Istanbul"),
+            ("H10", "Shanghai to Brussels flight prices for December"),
+            ("H11", "Shanghai to Brussels flight options arriving before 9 AM"),
+            ("H12", "Shanghai to Brussels flights with a short layover"),
+            ("H13", "Shanghai to Brussels flights with no overnight layover"),
+            ("H14", "One way flight Shanghai to Brussels this Friday"),
+            ("H15", "Return flight Brussels to Shanghai two weeks after departure"),
+            ("H16", "Shanghai to Brussels flights operated by Air China"),
+            ("H17", "Shanghai to Brussels flights operated by Lufthansa"),
+            ("H18", "Shanghai to Brussels flights with Star Alliance airlines"),
+            ("H19", "Shanghai to Brussels flight with checked baggage and seat selection"),
+            ("H20", "Compare flight itineraries Shanghai to Brussels under 16 hours"),
+            ("H21", "Shanghai to Brussels flights departing after 6 PM"),
+            ("H22", "Shanghai to Brussels flights with a connection in Singapore"),
+            ("H23", "Shanghai to Brussels flights with a connection in Frankfurt"),
+            ("H24", "Shanghai to Brussels flights for two adults and one child"),
+            ("H25", "Shanghai to Brussels flights with flexible ticket changes"),
+          ]
+          queries = [
+            {"id": qid, "category": "easy_mixed", "query": query}
+            for qid, query in easy
+          ] + [
+            {"id": qid, "category": "difficult_flight", "query": query}
+            for qid, query in hard
+          ]
+          assert len(queries) == 50 and len({q["id"] for q in queries}) == 50
+          with open(os.path.join(out, "queries.json"), "w", encoding="utf-8") as f:
+            json.dump(queries, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+
+          config = {
+            "mode": "provider",
+            "queries": [q["query"] for q in queries],
+            "queue_backend": "memory",
+            "concurrency": 1,
+            "max_retries": 0,
+            "rate_per_proxy_rps": 0.2,
+            "rate_burst": 1,
+            "adaptive_rate": False,
+            "proxies": [],
+            "provider_base_url": os.environ["PROVIDER_BASE_URL"],
+            "provider_api_key_env": "SERPAPI_KEY",
+            "provider_engine": "google",
+            "request_timeout": "30s",
+            "output_path": os.path.join(out, "harvester-results.jsonl"),
+            "report_interval": "5s",
+          }
+          with open(os.path.join(out, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(config, f)
+            f.write("\n")
+
+          # Record the provider's account-wide usage before the run when possible.
+          key = os.environ.get("ANYIP_API_KEY", "")
+          def usage_snapshot(filename):
+            if not key:
+              return
+            try:
+              req = Request("https://dashboard.anyip.io/api/users/me",
+                            headers={"api-key": key})
+              with urlopen(req, timeout=15) as response:
+                team = json.load(response).get("default_team", {}).get("id")
+              if not team:
+                return
+              req = Request(
+                f"https://dashboard.anyip.io/api/v1/teams/{team}/usage",
+                headers={"api-key": key})
+              with urlopen(req, timeout=15) as response:
+                data = json.load(response)
+              snapshot = {
+                "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+                "consumption_bytes": data.get("consumption_bytes"),
+                "scope": "account-wide; other concurrent traffic may be included",
+              }
+              with open(os.path.join(out, filename), "w", encoding="utf-8") as f:
+                json.dump(snapshot, f, indent=2)
+                f.write("\n")
+            except Exception:
+              # Never print request details or credential-bearing values.
+              pass
+          usage_snapshot("anyip-usage-before.json")
+          PY
+
+          go build -o "$RUNNER_TEMP/web-harvester" ./cmd/harvester
+          "$RUNNER_TEMP/web-harvester" \
+            -config "$out/config.json" \
+            -mode provider \
+            > "$out/harvester-stdout.log" \
+            2> "$out/harvester-stderr.log"
+
+          # The app writes successful structured records only. Match them to the
+          # exact requested query and mark missing records as failures with unknown
+          # HTTP status rather than guessing what the provider returned.
+          python3 - "$out" <<'PY'
+          import csv
+          import json
+          import math
+          import os
+          import statistics
+          import sys
+          from datetime import datetime, timezone
+
+          out = sys.argv[1]
+          with open(os.path.join(out, "queries.json"), encoding="utf-8") as f:
+            queries = json.load(f)
+          results_path = os.path.join(out, "harvester-results.jsonl")
+          result_by_query = {}
+          if os.path.exists(results_path):
+            with open(results_path, encoding="utf-8") as f:
+              for line in f:
+                if not line.strip():
+                  continue
+                row = json.loads(line)
+                result_by_query[row.get("query", "")] = row
+
+          records = []
+          sanitized_results = []
+          for q in queries:
+            raw = result_by_query.get(q["query"])
+            if raw is None:
+              records.append({
+                **q, "status": "no_result_record", "http_status": "unknown",
+                "fetch_latency_ms": "", "organic_result_count": 0,
+                "featured_snippet": False, "ai_overview": False,
+                "error_note": "Web Harvester did not emit a successful parsed record; HTTP status unavailable from current pipeline output.",
+              })
+              continue
+            organic = raw.get("organic") or []
+            latency = raw.get("latency_ms")
+            records.append({
+              **q, "status": "success", "http_status": 200,
+              "fetch_latency_ms": latency,
+              "organic_result_count": len(organic),
+              "featured_snippet": bool(raw.get("featured_snippet")),
+              "ai_overview": bool(raw.get("ai_overview")),
+              "error_note": "",
+            })
+            # Keep the actual parsed result payload but remove runtime/proxy metadata
+            # and raw response bodies before creating an artifact.
+            safe = dict(raw)
+            for field in ("proxy_used", "run_id", "raw_body"):
+              safe.pop(field, None)
+            safe["benchmark_query_id"] = q["id"]
+            safe["benchmark_category"] = q["category"]
+            sanitized_results.append(safe)
+
+          csv_path = os.path.join(out, "query-report.csv")
+          with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            fields = ["id", "category", "query", "status", "http_status",
+                      "fetch_latency_ms", "organic_result_count", "featured_snippet",
+                      "ai_overview", "error_note"]
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(records)
+
+          with open(os.path.join(out, "results.jsonl"), "w", encoding="utf-8") as f:
+            for row in sanitized_results:
+              f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+          def percentile(values, p):
+            if not values:
+              return None
+            ordered = sorted(values)
+            return ordered[max(0, math.ceil(p * len(ordered)) - 1)]
+
+          def group_summary(category):
+            group = [r for r in records if r["category"] == category]
+            latencies = [int(r["fetch_latency_ms"]) for r in group
+                         if r["fetch_latency_ms"] != ""]
+            return {
+              "queries": len(group),
+              "successful_records": sum(r["status"] == "success" for r in group),
+              "no_result_record": sum(r["status"] != "success" for r in group),
+              "fetch_latency_ms": {
+                "sample_count": len(latencies),
+                "median": statistics.median(latencies) if latencies else None,
+                "p95_nearest_rank": percentile(latencies, 0.95),
+              },
+              "mean_organic_results": (
+                round(statistics.mean([r["organic_result_count"] for r in group
+                                      if r["status"] == "success"]), 2)
+                if any(r["status"] == "success" for r in group) else None
+              ),
+            }
+
+          latencies = [int(r["fetch_latency_ms"]) for r in records
+                       if r["fetch_latency_ms"] != ""]
+          summary = {
+            "benchmark": "Web Harvester 50-query search benchmark",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "total_queries": len(records),
+            "successful_records": sum(r["status"] == "success" for r in records),
+            "no_result_record": sum(r["status"] != "success" for r in records),
+            "fetch_latency_ms": {
+              "sample_count": len(latencies),
+              "median": statistics.median(latencies) if latencies else None,
+              "p95_nearest_rank": percentile(latencies, 0.95),
+              "min": min(latencies) if latencies else None,
+              "max": max(latencies) if latencies else None,
+            },
+            "by_category": {
+              "easy_mixed": group_summary("easy_mixed"),
+              "difficult_flight": group_summary("difficult_flight"),
+            },
+            "measurement_note": "fetch_latency_ms is the provider fetch duration recorded by Web Harvester, including any AI Overview follow-up. It is not the full workflow wall-clock time or anyIP tunnel-only latency.",
+            "status_note": "A successful parsed record corresponds to HTTP 200 in the current provider fetcher. Missing records are marked with unknown HTTP status because the current sink does not persist failed-attempt status codes.",
+            "privacy_note": "Proxy metadata and raw response bodies are excluded from results.jsonl; secrets are never written to artifacts.",
+          }
+          with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+            f.write("\n")
+          if len(records) != 50:
+            raise SystemExit(f"Expected 50 report rows; got {len(records)}")
+          print("Benchmark report generated for 50 configured queries.")
+          print(f"Successful parsed records: {summary['successful_records']}/50")
+          print("Detailed results remain in the artifact, not in Actions logs.")
+          PY
+
+          # Allow the usage endpoint time to settle, then take the second snapshot.
+          if [ -n "${ANYIP_API_KEY:-}" ]; then
+            sleep 120
+            python3 - "$out" <<'PY'
+          import json, os, sys
+          from datetime import datetime, timezone
+          from urllib.request import Request, urlopen
+          out = sys.argv[1]
+          key = os.environ.get("ANYIP_API_KEY", "")
+          if key:
+            try:
+              req = Request("https://dashboard.anyip.io/api/users/me", headers={"api-key": key})
+              with urlopen(req, timeout=15) as response:
+                team = json.load(response).get("default_team", {}).get("id")
+              if team:
+                req = Request(f"https://dashboard.anyip.io/api/v1/teams/{team}/usage", headers={"api-key": key})
+                with urlopen(req, timeout=15) as response:
+                  data = json.load(response)
+                with open(os.path.join(out, "anyip-usage-after.json"), "w", encoding="utf-8") as f:
+                  json.dump({
+                    "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "consumption_bytes": data.get("consumption_bytes"),
+                    "scope": "account-wide; other concurrent traffic may be included",
+                  }, f, indent=2)
+                  f.write("\n")
+            except Exception:
+              pass
+          PY
+          fi
+
+          # Package only the safe outputs. Do not include logs or the credential-bearing config.
+          rm -f "$out/config.json" "$out/harvester-stdout.log" "$out/harvester-stderr.log" "$out/harvester-results.jsonl"
+          cd "$out"
+          zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json anyip-usage-before.json anyip-usage-after.json 2>/dev/null || \
+            zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json
+
+      - name: Upload benchmark ZIP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chris-50-query-benchmark
+          path: ${{ runner.temp }}/chris-50-query-benchmark/chris-50-query-benchmark.zip
+          if-no-files-found: warn
+          retention-days: 7
