@@ -424,7 +424,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--deal-intel-root", required=True)
     ap.add_argument("--output", default="deal-intelligence-discovery.json")
-    ap.add_argument("--max-pages", type=int, choices=(5, 10, 15), default=10)
+    ap.add_argument("--max-pages", type=int, choices=(5, 10, 15, 30), default=30)
     ap.add_argument("--freshness-days", type=int, choices=(7, 14, 30), default=30)
     ap.add_argument("--api-base-url", default=os.environ.get("DEAL_INTEL_API_BASE_URL", API_DEFAULT))
     args = ap.parse_args()
