@@ -489,7 +489,7 @@ final memory: alloc=5MB sys=61MB goroutines=1</div>
       <article class="card honest reveal">
         <h3>What this does not claim</h3>
         <ul>
-          <li>The figures above are orchestration-only: mock fetcher, zero network.</li>
+          <li>The 90-minute load test shown here is orchestration-only: mock fetcher, simulated latency, zero network. The proxy benchmark and third-party integration pilot above are separate tests involving real network requests.</li>
           <li>No CAPTCHA solving or anti-detection. Live Google tests returned JavaScript-check and CAPTCHA pages, not search results; direct Google collection is not currently dependable.</li>
           <li>Search-results selectors target bundled fixtures, not live Google markup. The successful search evaluation used a third-party provider and does not validate direct Google scraping.</li>
           <li>The third-party integration pilot passed, but this is not a production deployment or sustained live-traffic validation.</li>
