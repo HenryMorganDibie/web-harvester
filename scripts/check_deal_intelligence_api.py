@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from scripts.deal_intelligence_tavily_pilot import API_DEFAULT, fetch_database
+from deal_intelligence_tavily_pilot import API_DEFAULT, fetch_database
 
 
 def main() -> int:
