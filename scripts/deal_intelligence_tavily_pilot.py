@@ -119,7 +119,12 @@ def classify_candidates(candidates: list[dict], existing: list[dict], same_trans
         if matches:
             status = "already_in_database"
         elif candidate.get("freshness_status") == "recent" and candidate.get("source", {}).get("page_fetch_status") == "fetched":
-            status = "potentially_new_needs_human_review"
+            if candidate.get("source", {}).get("date_basis") == "publisher":
+                status = "potentially_new_needs_human_review"
+            elif candidate.get("source", {}).get("date_basis") == "search_result":
+                status = "needs_date_confirmation"
+            else:
+                status = "not_eligible_as_new"
         else:
             status = "not_eligible_as_new"
         candidate["database_match"] = [
@@ -279,6 +284,11 @@ def fetch_database(api_base: str, client: httpx.Client, page_size: int = 100) ->
         all_rows.extend(rows)
     if len(all_rows) != expected_total:
         raise RuntimeError(f"Loaded {len(all_rows)} of {expected_total} production deals; refusing partial deduplication.")
+    ids = [str(row.get("id") or "") for row in all_rows]
+    if any(not value for value in ids):
+        raise RuntimeError("Production API returned a deal without a canonical id; refusing unsafe deduplication.")
+    if len(set(ids)) != len(ids):
+        raise RuntimeError("Production API pagination returned duplicate deal ids; refusing a potentially incomplete snapshot.")
     return all_rows
 
 
@@ -311,7 +321,14 @@ def main():
     queries = [f"{q} {today.year}" for q in QUERY_TEMPLATES]
     by_url, query_stats, fetch_errors = {}, [], {}
 
-    # Search and production API reads are direct; only publisher-page requests use the proxy.
+    # Validate the production endpoint before spending Tavily requests. Search and API reads
+    # are direct; only publisher-page requests use the configured proxy.
+    try:
+        with httpx.Client(timeout=API_TIMEOUT, follow_redirects=True) as api_client:
+            database = fetch_database(api_base, api_client)
+    except Exception as exc:
+        raise SystemExit(f"Could not load the complete production deal database ({type(exc).__name__}); refusing to discover or label candidates as new.") from exc
+
     with httpx.Client(timeout=SEARCH_TIMEOUT, follow_redirects=True) as client:
         for query in queries:
             try:
@@ -344,13 +361,6 @@ def main():
 
         if not any(q["status"] == "ok" for q in query_stats):
             raise SystemExit("All Tavily searches failed; no discovery results were generated.")
-
-        # Load all production records before classifying anything as missing.
-        try:
-            with httpx.Client(timeout=API_TIMEOUT, follow_redirects=True) as api_client:
-                database = fetch_database(api_base, api_client)
-        except Exception as exc:
-            raise SystemExit(f"Could not load the complete production deal database ({type(exc).__name__}); refusing to label candidates as new.") from exc
 
     results = list(by_url.values())
     for item in results:
