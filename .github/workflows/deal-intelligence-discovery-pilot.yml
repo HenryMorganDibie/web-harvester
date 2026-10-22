@@ -73,7 +73,7 @@ jobs:
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
-          DEAL_INTEL_API_BASE_URL: https://deal-intelligence-api.vercel.app
+          DEAL_INTEL_API_BASE_URL: https://deal-intelligence-api-henry-dibie-s-projects.vercel.app
         run: |
           set -euo pipefail
           python scripts/deal_intelligence_tavily_pilot.py \
