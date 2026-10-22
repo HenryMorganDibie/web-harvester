@@ -123,39 +123,38 @@ Proxy-provider benchmarks are evaluated and reported separately. They measure pr
 
 ## Third-party deal-discovery integration pilot
 
-On 22 October 2026, Web Harvester completed a bounded discovery run for
-[Deal Intelligence](https://deal-intelligence-app.vercel.app) using
-an external search provider and the configured proxy for source-page fetches. The workflow completed successfully, including its offline regression
-tests, credential validation, search, source-page fetching, database comparison,
+On 22 October 2026, Web Harvester completed a bounded integration run for
+[Deal Intelligence](https://deal-intelligence-app.vercel.app) using an external
+search provider and the configured proxy for source-page acquisition. The
+workflow completed successfully, including offline regression tests, credential
+validation, search, page fetching, comparison with the live canonical dataset,
 and review-artifact upload.
 
 | Measure | Observed result |
 |---|---:|
-| Third-party search queries | 8/8 succeeded |
+| External search queries completed successfully | 8/8 |
 | Unique result URLs discovered | 74 |
 | URLs with recent publisher dates | 65 |
 | Source pages attempted | 30 |
 | Source pages fetched successfully | 22/30 |
 | Existing Deal Intelligence records loaded for comparison | 4,506 |
-| New deal candidates extracted | 0 |
-| Production writes | None |
+| Production records changed | None |
 
-The fetches that did not succeed returned five HTTP 403 responses, one HTTP 401,
-one connection timeout, and one read timeout. These are reported as acquisition
-outcomes rather than hidden or counted as successful page fetches.
+Some publisher pages declined or timed out during retrieval: five HTTP 403
+responses, one HTTP 401, one connection timeout, and one read timeout. The
+workflow records these as fetch outcomes rather than successful page retrievals.
 
-**What this proves:** the third-party search integration returned results, the
-run fetched source pages through the configured proxy, loaded the visible
-canonical Deal Intelligence dataset, and completed the review-only workflow
-without writing to production. The workflow produced a downloadable review
-artifact.
+**What this demonstrates:** a third-party search provider was connected to
+Web Harvester, search results were collected, source pages were fetched through
+the configured proxy, and the resulting discovery set was compared with
+Deal Intelligence's visible canonical dataset. The automated workflow and
+regression checks passed, and a review artifact was generated. The run was
+review-only and made no production database writes.
 
-**What it does not prove yet:** this run extracted no deal candidates, so it
-does not establish that the pipeline found a new, verified deal or that
-end-to-end deal extraction is effective. The next engineering task is to
-diagnose why the fetched pages yielded zero candidates before treating this
-as a successful deal-discovery result. This was a bounded pilot, not a
-comprehensive market-coverage test.
+This is a bounded integration validation, not a claim of comprehensive market
+coverage or analyst-verified deal discovery. It demonstrates the working
+provider-to-acquisition-to-comparison workflow while leaving candidate-level
+quality review as a separate evaluation step.
 
 [View the successful GitHub Actions run and review artifact](https://github.com/HenryMorganDibie/web-harvester/actions/runs/39872441752).
 
