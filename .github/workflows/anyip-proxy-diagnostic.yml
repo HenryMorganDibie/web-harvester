@@ -1,0 +1,131 @@
+name: anyIP Proxy and Search Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Test proxy connectivity and one search request
+        env:
+          HARVESTER_PROXY_URL: ${{ secrets.HARVESTER_PROXY_URL }}
+        shell: bash
+        run: |
+          set +x
+          python3 <<'PY'
+          import json
+          import os
+          import re
+          import time
+          from datetime import datetime, timezone
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote_plus
+          from urllib.request import ProxyHandler, Request, build_opener
+
+          proxy = os.environ.get("HARVESTER_PROXY_URL", "").strip()
+          report = {
+              "diagnostic": "anyIP proxy connectivity and single-search check",
+              "created_at_utc": datetime.now(timezone.utc).isoformat(),
+              "proxy_configured": bool(proxy),
+              "proxy_connectivity": {"status": "not_run"},
+              "search_request": {"status": "not_run"},
+              "interpretation": [],
+              "safety_note": "No proxy URL, IP address, credentials, or response body is recorded.",
+          }
+          out = os.environ.get("RUNNER_TEMP", ".")
+          report_path = os.path.join(out, "anyip-proxy-diagnostic.json")
+
+          if not proxy:
+              report["proxy_connectivity"] = {"status": "failed", "reason": "HARVESTER_PROXY_URL secret is missing"}
+              report["search_request"] = {"status": "not_run", "reason": "Proxy configuration is required"}
+              report["interpretation"].append("Configure the repository secret before running this diagnostic.")
+          else:
+              opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+              try:
+                  start = time.monotonic()
+                  req = Request("https://api.ipify.org", headers={"User-Agent": "WebHarvester-Diagnostic/1.0"})
+                  with opener.open(req, timeout=20) as response:
+                      body = response.read(128).decode("ascii", "replace").strip()
+                      elapsed = round((time.monotonic() - start) * 1000)
+                      valid_ip = bool(re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]{3,}", body))
+                      report["proxy_connectivity"] = {
+                          "status": "passed" if response.status == 200 and valid_ip else "failed",
+                          "http_status": response.status,
+                          "latency_ms": elapsed,
+                          "valid_ip_response": valid_ip,
+                      }
+              except HTTPError as exc:
+                  report["proxy_connectivity"] = {"status": "failed", "http_status": exc.code, "reason": "IP-check endpoint returned an HTTP error"}
+              except Exception as exc:
+                  # Keep the exception category only; it can contain URLs or proxy details.
+                  report["proxy_connectivity"] = {"status": "failed", "error_type": type(exc).__name__}
+
+              if report["proxy_connectivity"]["status"] != "passed":
+                  report["search_request"] = {"status": "not_run", "reason": "Proxy connectivity check failed"}
+                  report["interpretation"].append("The proxy path did not pass a neutral connectivity check; fix this before a search benchmark.")
+              else:
+                  query = "Python official documentation"
+                  url = "https://www.google.com/search?q=" + quote_plus(query)
+                  try:
+                      start = time.monotonic()
+                      req = Request(url, headers={
+                          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                          "Accept": "text/html,application/xhtml+xml",
+                          "Accept-Language": "en-US,en;q=0.8",
+                      })
+                      with opener.open(req, timeout=20) as response:
+                          body = response.read(1_500_000).decode("utf-8", "replace")
+                          elapsed = round((time.monotonic() - start) * 1000)
+                          lower = body.lower()
+                          blocked_terms = ("unusual traffic", "our systems have detected", "recaptcha", "sorry/index", "automated queries")
+                          is_blocked = any(term in lower for term in blocked_terms)
+                          has_search_shell = 'id="search"' in lower or "id='search'" in lower
+                          has_result = bool(re.search(r'class=["\'][^"\']*(?:MjjYud|g)[^"\']*["\']', body))
+                          parsed_organic_like = has_search_shell and has_result and not is_blocked
+                          report["search_request"] = {
+                              "status": "passed" if response.status == 200 and parsed_organic_like else ("blocked_or_challenge" if is_blocked else "no_usable_results"),
+                              "http_status": response.status,
+                              "latency_ms": elapsed,
+                              "search_page_signature": has_search_shell,
+                              "result_markup_signature": has_result,
+                              "block_or_challenge_signature": is_blocked,
+                              "usable_result_markup_detected": parsed_organic_like,
+                          }
+                  except HTTPError as exc:
+                      report["search_request"] = {"status": "http_error", "http_status": exc.code}
+                  except Exception as exc:
+                      report["search_request"] = {"status": "request_error", "error_type": type(exc).__name__}
+
+                  s = report["search_request"]["status"]
+                  if s == "passed":
+                      report["interpretation"].append("The proxy works and this one search response contains result-like markup. Run the full benchmark only after reviewing the result.")
+                  elif s == "blocked_or_challenge":
+                      report["interpretation"].append("The proxy connection works, but Google returned a block/challenge page. Stop here; do not retry the 50-query run against the same response path.")
+                  else:
+                      report["interpretation"].append("The proxy connection works, but the single search request did not yield confirmed usable result markup. This does not establish a working search provider.")
+          with open(report_path, "w", encoding="utf-8") as f:
+              json.dump(report, f, indent=2)
+              f.write("\n")
+          print("Diagnostic report written. Proxy URL, IP address, credentials, and response body were not logged.")
+          print("Proxy connectivity:", report["proxy_connectivity"]["status"])
+          print("Single-search outcome:", report["search_request"]["status"])
+          PY
+
+      - name: Upload sanitized diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anyip-proxy-diagnostic
+          path: ${{ runner.temp }}/anyip-proxy-diagnostic.json
+          if-no-files-found: warn
+          retention-days: 7
