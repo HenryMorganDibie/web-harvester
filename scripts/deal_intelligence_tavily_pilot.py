@@ -31,6 +31,7 @@ QUERY_TEMPLATES = [
     "African company receives investment from IFC BII Proparco AfDB",
 ]
 MAX_RESULTS_PER_QUERY = 10
+AFRICAN_ISO2 = {"DZ", "AO", "BJ", "BW", "BF", "BI", "CV", "CM", "CF", "TD", "KM", "CG", "CD", "CI", "DJ", "EG", "GQ", "ER", "SZ", "ET", "GA", "GM", "GH", "GN", "GW", "KE", "LS", "LR", "LY", "MG", "MW", "ML", "MR", "MU", "MA", "MZ", "NA", "NE", "NG", "RW", "ST", "SN", "SC", "SL", "SO", "ZA", "SS", "SD", "TZ", "TG", "TN", "UG", "ZM", "ZW", "EH"}
 FRESHNESS_DAYS = 30
 SEARCH_TIMEOUT = httpx.Timeout(15.0, connect=6.0)
 PAGE_TIMEOUT = httpx.Timeout(12.0, connect=5.0)
@@ -85,6 +86,82 @@ def parse_date(value) -> date | None:
         return None
 
 
+def extract_event_date(text: str, reference_date=None) -> date | None:
+    """Prefer a transaction milestone date explicitly described in the article over its publication date."""
+    months = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    date_pattern = re.compile(
+        rf"\b(?:{months}\s+\d{{1,2}},?\s+\d{{4}}|\d{{4}}-\d{{2}}-\d{{2}})\b",
+        re.IGNORECASE,
+    )
+    event_words = re.compile(
+        r"\b(final[- ]close|first[- ]close|close|closing|announc\w*|rais\w*|funding|"
+        r"acqui\w*|invest\w*|financ\w*|complet\w*|signed|transaction|deal|loan|facility|merger)\b",
+        re.IGNORECASE,
+    )
+    found = []
+    for match in date_pattern.finditer(text or ""):
+        raw = match.group(0)
+        parsed = parse_date(raw)
+        if parsed is None:
+            for fmt in ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"):
+                try:
+                    parsed = datetime.strptime(raw, fmt).date()
+                    break
+                except ValueError:
+                    continue
+        if parsed is None:
+            continue
+        context = text[max(0, match.start() - 100):min(len(text), match.end() + 100)]
+        if not event_words.search(context):
+            continue
+        if reference_date and parsed > reference_date:
+            continue
+        found.append(parsed)
+    return max(found) if found else None
+
+
+def africa_relevant(deal: dict, title: str, lead: str, countries_in_text) -> bool:
+    """Reject transactions with no African party/market evidence despite broad African search terms."""
+    if str(deal.get("country") or "").upper() in AFRICAN_ISO2:
+        return True
+    if any(str(code).upper() in AFRICAN_ISO2 for code in (deal.get("countries") or [])):
+        return True
+    text = " ".join((title or "", lead or ""))
+    if any(getattr(country, "iso2", "").upper() in AFRICAN_ISO2 for country in countries_in_text(text)):
+        return True
+    return bool(re.search(r"\b(africa|african|afrique|africaine|africain|áfrica|africano|africana)\b", title or "", re.IGNORECASE))
+
+
+def _target_tokens(value: str) -> set[str]:
+    tokens = set(re.findall(r"[a-z0-9]+", (value or "").casefold()))
+    return tokens - {"the", "a", "an", "fund", "group", "holdings", "holding", "limited", "ltd", "plc", "inc", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}
+
+
+def related_fund_matches(candidate: dict, existing: list[dict]) -> list[dict]:
+    """Flag same-manager/fund family records for review when closes may be separate milestones."""
+    if candidate.get("deal_type") != "fund_raise" or not candidate.get("target"):
+        return []
+    tokens = _target_tokens(candidate.get("target", ""))
+    try:
+        candidate_day = date.fromisoformat(str(candidate.get("announced") or "")[:10])
+    except ValueError:
+        return []
+    matches = []
+    for row in existing:
+        if row.get("deal_type") != "fund_raise" or not row.get("target"):
+            continue
+        other_tokens = _target_tokens(row.get("target", ""))
+        if not tokens or not other_tokens or not (tokens <= other_tokens or other_tokens <= tokens):
+            continue
+        try:
+            other_day = date.fromisoformat(str(row.get("announced") or "")[:10])
+        except ValueError:
+            continue
+        if abs((candidate_day - other_day).days) <= 365:
+            matches.append(row)
+    return matches
+
+
 def freshness_status(published, today: date | None = None, days: int = FRESHNESS_DAYS) -> tuple[str, date | None]:
     today = today or datetime.now(timezone.utc).date()
     published_day = parse_date(published)
@@ -120,7 +197,7 @@ def classify_candidates(candidates: list[dict], existing: list[dict], same_trans
         if matches:
             status = "already_in_database"
         elif candidate.get("freshness_status") == "recent" and candidate.get("source", {}).get("page_fetch_status") == "fetched":
-            if candidate.get("source", {}).get("date_basis") == "publisher":
+            if candidate.get("source", {}).get("date_basis") in {"publisher_event", "publisher_article"}:
                 status = "potentially_new_needs_human_review"
             elif candidate.get("source", {}).get("date_basis") == "search_result":
                 status = "needs_date_confirmation"
@@ -361,7 +438,7 @@ def main():
 
     sys.path.insert(0, str(Path(args.deal_intel_root).resolve()))
     try:
-        from src.engines.deals import extract_deal, same_transaction
+        from src.engines.deals import extract_deal, same_transaction, countries_in_text, classify_sector
     except Exception as exc:
         raise SystemExit(f"Cannot import Deal Intelligence extractor: {type(exc).__name__}") from exc
 
@@ -446,19 +523,21 @@ def main():
                 fetched_day = parse_date(article.get("published_date"))
                 if fetched_day:
                     item["publisher_published_day"] = fetched_day.isoformat()
-                    item["published_day"] = fetched_day.isoformat()
-                    item["date_basis"] = "publisher"
-                    item["freshness_status"] = freshness_status(fetched_day, today=today, days=args.freshness_days)[0]
-                else:
-                    # Search-index dates help prioritize results but are not publisher-verified dates.
-                    item["date_basis"] = "search_result" if parse_date(item.get("published_date")) else "unknown"
                 title = item.get("page_title") or item["title"]
                 lead = article.get("lead") or ""
+                event_day = extract_event_date("\n".join((title, lead)), reference_date=fetched_day or parse_date(item.get("published_date")))
+                effective_day = event_day or fetched_day
+                if effective_day:
+                    item["published_day"] = effective_day.isoformat()
+                    item["date_basis"] = "publisher_event" if event_day else "publisher_article"
+                    item["freshness_status"] = freshness_status(effective_day, today=today, days=args.freshness_days)[0]
+                else:
+                    item["date_basis"] = "search_result" if parse_date(item.get("published_date")) else "unknown"
                 # Search snippets alone must never create a deal from an unrelated publisher page.
                 evidence = "\n".join(part for part in (title, lead) if part)
                 item["page_evidence_excerpt"] = evidence[:1600]
                 if item["freshness_status"] != "recent":
-                    item["candidate_status"] = "skipped_not_recent_after_publisher_date_check"
+                    item["candidate_status"] = "skipped_not_recent_after_event_date_check"
                     continue
                 if len(lead) < 80:
                     item["candidate_status"] = "insufficient_article_body_evidence"
@@ -469,15 +548,37 @@ def main():
                     continue
                 deal = extract_deal(
                     title, deal_evidence,
-                    published=item.get("publisher_published_day") or item.get("published_day"), publisher=item["publisher"], url=item["url"], africa_source=True,
+                    published=item.get("published_day") or item.get("publisher_published_day"), publisher=item["publisher"], url=item["url"], africa_source=True,
                 )
                 if not deal:
                     item["candidate_status"] = "no_deal_extracted"
                     continue
-                # Sector must be supported by the headline or article lead, not unrelated page chrome.
-                from src.engines.deals import classify_sector
-                focused_sector = classify_sector(" ".join((title, lead[:900])))
-                # Never preserve a sector inferred from broad search snippets if the article lead does not support it.
+                if not africa_relevant(deal, title, lead, countries_in_text):
+                    item["candidate_status"] = "rejected_no_african_party_or_market_evidence"
+                    continue
+                # Recover fund series names and final-close values from explicit headline wording.
+                if deal.get("deal_type") == "fund_raise":
+                    fund_name = re.search(r"(?i)\b((?:[A-Z][\w&.-]*\s+){0,5}Fund\s+(?:II|III|IV|V|VI|VII|VIII|IX|X|\d+))\b", title)
+                    if fund_name:
+                        deal["target"] = re.sub(r"\s+", " ", fund_name.group(1)).strip()
+                    final_close = re.search(
+                        r"(?i)(?P<amount>(?:US\$|USD\s?|\$|€|£|₦)\s?[\d,.]+\s?(?:million|billion|m|bn|b)?)\s+(?:at\s+the\s+)?final[- ]close\b",
+                        title,
+                    )
+                    if final_close:
+                        amount_text = final_close.group("amount").replace(" ", "")
+                        currency_match = re.match(r"(US\$|USD|\$|€|£|₦)([\d,.]+)(million|billion|m|bn|b)?", amount_text, re.IGNORECASE)
+                        if currency_match:
+                            symbol, number, scale = currency_match.groups()
+                            multiplier = {"million": 1_000_000, "m": 1_000_000, "billion": 1_000_000_000, "bn": 1_000_000_000, "b": 1_000_000_000}.get((scale or "").lower(), 1)
+                            amount = float(number.replace(",", "")) * multiplier
+                            currency = "USD" if symbol.upper() in {"US$", "USD", "$"} else {"€": "EUR", "£": "GBP", "₦": "NGN"}.get(symbol, None)
+                            deal["amount"] = amount
+                            deal["currency"] = currency
+                            deal["amount_usd"] = amount if currency == "USD" else None
+                deal["announced"] = item.get("published_day") or deal.get("announced")
+                # Fund labels are often broad; don't infer a fund's sector from LP examples in the article.
+                focused_sector = classify_sector(title if deal.get("deal_type") == "fund_raise" else " ".join((title, lead[:400])))
                 deal["sector"] = focused_sector
                 candidates.append({
                     "deal": deal, "freshness_status": item["freshness_status"],
@@ -495,6 +596,16 @@ def main():
                 item["page_fetch_status"] = f"error_{kind}"
 
     candidates = classify_candidates(candidates, database, same_transaction)
+    for candidate in candidates:
+        if candidate["review_status"] == "potentially_new_needs_human_review":
+            related = related_fund_matches(candidate["deal"], database)
+            if related:
+                candidate["review_status"] = "possible_related_fund_record_needs_human_review"
+                candidate["related_existing_records"] = [
+                    {"id": row.get("id"), "announced": row.get("announced"), "headline": row.get("headline"),
+                     "target": row.get("target"), "amount_usd": row.get("amount_usd")}
+                    for row in related[:5]
+                ]
     summary = {
         "queries_succeeded": sum(q["status"] == "ok" for q in query_stats),
         "queries_failed": sum(q["status"] != "ok" for q in query_stats),
@@ -507,6 +618,7 @@ def main():
         "deal_candidates_extracted": len(candidates),
         "matched_existing_database": sum(c["review_status"] == "already_in_database" for c in candidates),
         "potentially_new_for_human_review": sum(c["review_status"] == "potentially_new_needs_human_review" for c in candidates),
+        "possible_related_fund_records": sum(c["review_status"] == "possible_related_fund_record_needs_human_review" for c in candidates),
         "needs_date_confirmation": sum(c["review_status"] == "needs_date_confirmation" for c in candidates),
         "not_eligible_as_new": sum(c["review_status"] == "not_eligible_as_new" for c in candidates),
         "elapsed_seconds": round(time.monotonic() - start, 2),
@@ -528,7 +640,10 @@ def main():
             "A potentially-new label means no match was found in the complete visible canonical product deal set; it is not analyst-verified.",
             "The public API does not expose hidden or merged audit-only rows; their canonical visible records should be present in the product set.",
             "The pilot does not write to production. Human review is required before ingestion.",
-            "Only recent candidates with publisher-declared publication dates can be labelled potentially new; search-index dates require confirmation.",
+            "Recent publisher article dates do not override older transaction milestone dates explicitly stated in the article.",
+            "Fund-close milestones are compared against same-fund records within a one-year window and may require analyst review.",
+            "Only candidates with African party or market evidence are eligible; broad Africa-focused searches can return unrelated foreign deals.",
+            "Only recent candidates with publisher-declared dates can be labelled potentially new; search-index dates require confirmation.",
             "Search snippets alone are never sufficient evidence to create a deal candidate.",
             "This bounded discovery run is not comprehensive Bloomberg-equivalent coverage.",
         ],
