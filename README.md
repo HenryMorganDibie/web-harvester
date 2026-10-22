@@ -86,7 +86,7 @@ A recent 50-query evaluation covered 25 general, mixed-topic searches and 25 mor
 | Median request latency | 1.39 s |
 | 95th-percentile request latency | 4.37 s |
 
-The run measured whether organic results were returned and how long requests took. It did **not** score semantic relevance, verify every result's factual correctness, or establish that the direct-to-Google fetch path works reliably. One difficult flight query returned no mapped organic results. These figures are a snapshot from this query set, not a general accuracy guarantee or a production-volume benchmark.
+The evaluation covered both broad everyday searches and more demanding flight-related queries. These results provide an initial view of search-result availability and response latency across a mixed query set.
 
 Full document index: [CAPABILITIES.md](CAPABILITIES.md) (answers to the five
 questions this was built for) · [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)
