@@ -377,7 +377,7 @@ go run ./cmd/harvester -config configs/config.example.yaml -mode mock">Copy</but
       <article class="card span-2 reveal">
         <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
         <h3>Blocks detected, never bypassed</h3>
-        <p>CAPTCHAs, challenges, consent walls and rate limits are classified and routed around by cooling the proxy, not evaded.</p>
+        <p>CAPTCHAs, challenges, consent walls and rate limits are classified and reported. The affected proxy is cooled down; access controls are not bypassed.</p>
       </article>
       <article class="card span-4 reveal">
         <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 20h8M12 18v2"/></svg></div>
@@ -490,9 +490,9 @@ final memory: alloc=5MB sys=61MB goroutines=1</div>
         <h3>What this does not claim</h3>
         <ul>
           <li>The figures above are orchestration-only: mock fetcher, zero network.</li>
-          <li>No CAPTCHA solving or anti-detection. Blocked pages are reported, not evaded.</li>
-          <li>Search-results selectors target bundled fixtures, not live markup.</li>
-          <li>A new build: no production deployments yet.</li>
+          <li>No CAPTCHA solving or anti-detection. Live Google tests returned JavaScript-check and CAPTCHA pages, not search results; direct Google collection is not currently dependable.</li>
+          <li>Search-results selectors target bundled fixtures, not live Google markup. The successful search evaluation used a third-party provider and does not validate direct Google scraping.</li>
+          <li>The third-party integration pilot passed, but this is not a production deployment or sustained live-traffic validation.</li>
         </ul>
         <p style="margin-top:16px"><a class="link" href="https://github.com/HenryMorganDibie/web-harvester#honest-limitations" target="_blank" rel="noopener">Full limitations →</a></p>
       </article>
