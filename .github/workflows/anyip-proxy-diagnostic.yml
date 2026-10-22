@@ -95,8 +95,8 @@ jobs:
                           has_search_shell = 'id="search"' in lower or "id='search'" in lower
                           has_result = bool(re.search(r'class=["\\'][^"\\']*(?:MjjYud|g)[^"\\']*["\\']', body))
                           parsed_organic_like = has_search_shell and has_result and not is_blocked and not is_consent
-                          title_match = re.search(r"<title[^>]*>(.*?)</title\\s*>", body, re.IGNORECASE | re.DOTALL)
-                          page_title = re.sub(r"\\s+", " ", title_match.group(1)).strip()[:180] if title_match else None
+                          title_match = re.search(r"<title[^>]*>(.*?)</title\s*>", body, re.IGNORECASE | re.DOTALL)
+                          page_title = re.sub(r"\s+", " ", title_match.group(1)).strip()[:180] if title_match else None
                           # Keep only URL origin/path; do not persist query parameters.
                           from urllib.parse import urlsplit
                           final = urlsplit(response.geturl())
