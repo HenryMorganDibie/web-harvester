@@ -71,7 +71,7 @@ proxies, no network access required.
 - **Limitations**: documented in full, not glossed over — see
   [Honest limitations](#honest-limitations).
 
-- **Recent search evaluation**: a 50-query mixed-difficulty run returned at least one mapped organic result for 49 queries (98%); median latency was 1.39s and p95 was 4.37s. See [Recent search evaluation](#recent-search-evaluation) for scope and limitations.
+- **Recent search evaluation**: a 50-query mixed-difficulty run returned at least one mapped organic result for 49 queries (98%); median latency was 1.39s and p95 was 4.37s. See [Recent search evaluation](#recent-search-evaluation) for evaluation details.
 
 ## Recent search evaluation
 
@@ -87,6 +87,8 @@ A recent 50-query evaluation covered 25 general, mixed-topic searches and 25 mor
 | 95th-percentile request latency | 4.37 s |
 
 The evaluation covered both broad everyday searches and more demanding flight-related queries. These results provide an initial view of search-result availability and response latency across a mixed query set.
+
+Proxy-provider benchmarks are evaluated and reported separately. They measure proxy behaviour such as state targeting, sticky versus rotating sessions, latency, retries and billed traffic; they are not combined with search-result availability or latency figures.
 
 Full document index: [CAPABILITIES.md](CAPABILITIES.md) (answers to the five
 questions this was built for) · [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)
