@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import re
 import sys
@@ -30,7 +31,9 @@ QUERY_TEMPLATES = [
 ]
 MAX_RESULTS_PER_QUERY = 10
 FRESHNESS_DAYS = 30
-PAGE_TIMEOUT = httpx.Timeout(20.0, connect=10.0)
+SEARCH_TIMEOUT = httpx.Timeout(15.0, connect=6.0)
+PAGE_TIMEOUT = httpx.Timeout(12.0, connect=5.0)
+API_TIMEOUT = httpx.Timeout(8.0, connect=4.0)
 
 
 def normalize_url(url: str) -> str:
@@ -235,11 +238,8 @@ def parse_article(markup: str) -> dict:
 
 
 def fetch_database(api_base: str, client: httpx.Client, page_size: int = 100) -> list[dict]:
-    """Fetch every current visible deal through the public read-only API; fail closed on partial data."""
-    all_rows = []
-    expected_total = None
-    offset = 0
-    while expected_total is None or offset < expected_total:
+    """Fetch every current visible deal in parallel; fail closed on partial or changing snapshots."""
+    def get_page(offset: int):
         response = client.get(
             f"{api_base.rstrip('/')}/api/deals",
             params={"limit": page_size, "offset": offset},
@@ -251,19 +251,33 @@ def fetch_database(api_base: str, client: httpx.Client, page_size: int = 100) ->
         total = payload.get("total_in_database")
         if not isinstance(rows, list) or not isinstance(total, int) or total < 0:
             raise RuntimeError("Production deals API returned an unexpected schema; refusing to continue.")
-        if expected_total is None:
-            expected_total = total
-            if expected_total == 0:
-                raise RuntimeError("Production deals API returned zero records; refusing to treat an empty snapshot as complete.")
-        elif total != expected_total:
+        return offset, total, rows
+
+    first_offset, expected_total, first_rows = get_page(0)
+    if expected_total == 0:
+        raise RuntimeError("Production deals API returned zero records; refusing to treat an empty snapshot as complete.")
+    if not first_rows and expected_total:
+        raise RuntimeError("Production deals API returned an empty first page.")
+    pages = [(first_offset, expected_total, first_rows)]
+    offsets = list(range(page_size, expected_total, page_size))
+    if offsets:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(get_page, offset) for offset in offsets]
+            for future in as_completed(futures):
+                pages.append(future.result())
+    pages.sort(key=lambda page: page[0])
+    all_rows = []
+    for offset, total, rows in pages:
+        if total != expected_total:
             raise RuntimeError("Production deal count changed during pagination; rerun to avoid partial deduplication.")
-        if not rows and offset < expected_total:
-            raise RuntimeError(f"Production deals API returned an empty page at offset {offset}.")
+        expected_page_size = min(page_size, expected_total - offset)
+        if len(rows) != expected_page_size:
+            raise RuntimeError(
+                f"Production deals API returned {len(rows)} records at offset {offset}; "
+                f"expected {expected_page_size}. Refusing partial deduplication."
+            )
         all_rows.extend(rows)
-        offset += len(rows)
-        if len(rows) < page_size and offset < expected_total:
-            raise RuntimeError(f"Production deals API stopped at {offset}/{expected_total}; refusing partial deduplication.")
-    if expected_total is not None and len(all_rows) != expected_total:
+    if len(all_rows) != expected_total:
         raise RuntimeError(f"Loaded {len(all_rows)} of {expected_total} production deals; refusing partial deduplication.")
     return all_rows
 
@@ -298,7 +312,7 @@ def main():
     by_url, query_stats, fetch_errors = {}, [], {}
 
     # Search and production API reads are direct; only publisher-page requests use the proxy.
-    with httpx.Client(timeout=PAGE_TIMEOUT, follow_redirects=True) as client:
+    with httpx.Client(timeout=SEARCH_TIMEOUT, follow_redirects=True) as client:
         for query in queries:
             try:
                 response = client.post(
@@ -333,7 +347,8 @@ def main():
 
         # Load all production records before classifying anything as missing.
         try:
-            database = fetch_database(api_base, client)
+            with httpx.Client(timeout=API_TIMEOUT, follow_redirects=True) as api_client:
+                database = fetch_database(api_base, api_client)
         except Exception as exc:
             raise SystemExit(f"Could not load the complete production deal database ({type(exc).__name__}); refusing to label candidates as new.") from exc
 
