@@ -124,9 +124,8 @@ Proxy-provider benchmarks are evaluated and reported separately. They measure pr
 ## Third-party deal-discovery integration pilot
 
 On 22 October 2026, Web Harvester completed a bounded discovery run for
-[Deal Intelligence](https://deal-intelligence-app.vercel.app) using Tavily
-as the third-party search provider and the configured proxy for source-page
-fetches. The workflow completed successfully, including its offline regression
+[Deal Intelligence](https://deal-intelligence-app.vercel.app) using
+an external search provider and the configured proxy for source-page fetches. The workflow completed successfully, including its offline regression
 tests, credential validation, search, source-page fetching, database comparison,
 and review-artifact upload.
 
@@ -552,28 +551,6 @@ run end-to-end against a real local Postgres container (`mode: mock`,
 `sink_backend: postgres`) and the resulting rows were queried directly:
 organic results, AI Overview presence, and calibration+raw-body capture all
 landed correctly.
-
-## Tavily provider
-
-Tavily is available as a separate native provider mode. It uses Tavily's
-`POST https://api.tavily.com/search` JSON API and maps Tavily results into
-the shared result model. It does not alter the existing SerpApi-compatible
-`provider` mode, its query parameters, or its AI Overview follow-up.
-
-Set `TAVILY_API_KEY` as an environment secret, then run:
-
-```yaml
-mode: tavily
-tavily_api_key_env: "TAVILY_API_KEY"
-request_timeout: 15s
-queries:
-  - "one focused test query"
-```
-
-Tavily returns web-search results, not Google's exact SERP feature set. This
-mode therefore maps its results and optional answer only; Google-specific
-People Also Ask and AI Overview fields are not fabricated. Start with one
-query to verify the key and response before increasing volume.
 
 ## Third-party provider fetcher
 
