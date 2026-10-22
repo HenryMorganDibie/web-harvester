@@ -364,11 +364,32 @@ jobs:
           PY
           fi
 
-          # Package only the safe outputs. Do not include logs or the credential-bearing config.
+          # Preserve sanitized worker diagnostics, never raw response bodies or config.
+          python3 - "$out" <<'PY'
+          import os, re, sys
+          out = sys.argv[1]
+          src = os.path.join(out, "harvester-stderr.log")
+          dst = os.path.join(out, "diagnostics.txt")
+          patterns = re.compile(r"worker:|starting harvest|harvest complete|captcha|consent|challenge|parse|drift|unexpected status|timeout|error|blocked", re.I)
+          lines = []
+          try:
+            with open(src, encoding="utf-8", errors="replace") as f:
+              for line in f:
+                if patterns.search(line):
+                  line = re.sub(r"https?://[^@\\s]+@", "https://[REDACTED]@", line)
+                  line = re.sub(r"(?i)(authorization|api-key|token|password)[:= ]+\\S+", r"\\1=[REDACTED]", line)
+                  lines.append(line.rstrip())
+          except OSError:
+            lines.append("Worker stderr was not available.")
+          with open(dst, "w", encoding="utf-8") as f:
+            f.write("\\n".join(lines[:500]) + "\\n")
+          PY
+
+          # Package reports and sanitized diagnostics only; exclude credentials and raw bodies.
           rm -f "$out/config.json" "$out/harvester-stdout.log" "$out/harvester-stderr.log" "$out/harvester-results.jsonl"
           cd "$out"
-          zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json anyip-usage-before.json anyip-usage-after.json 2>/dev/null || \
-            zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json
+          zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json diagnostics.txt anyip-usage-before.json anyip-usage-after.json 2>/dev/null || \
+            zip -q chris-50-query-benchmark.zip queries.json query-report.csv results.jsonl summary.json diagnostics.txt
 
       - name: Upload benchmark ZIP
         if: always()
@@ -378,3 +399,17 @@ jobs:
           path: ${{ runner.temp }}/chris-50-query-benchmark/chris-50-query-benchmark.zip
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Fail run when search results are not usable
+        if: success()
+        shell: bash
+        run: |
+          python3 - "${{ runner.temp }}/chris-50-query-benchmark/summary.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+            summary = json.load(f)
+          successes = summary.get("successful_records", 0)
+          if successes == 0:
+            raise SystemExit("Benchmark produced 0 parsed records. See uploaded artifact diagnostics.txt; do not treat this as a successful benchmark.")
+          print(f"Benchmark produced {successes}/50 parsed records.")
+          PY
