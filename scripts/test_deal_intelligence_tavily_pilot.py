@@ -44,7 +44,7 @@ class DiscoveryPilotTests(unittest.TestCase):
     def test_normalize_url_removes_fragment_and_tracking_slash(self):
         self.assertEqual(
             normalize_url("https://Example.com/story/?utm_source=x#section"),
-            "https://example.com/story?utm_source=x",
+            "https://example.com/story",
         )
 
     def test_parse_dates_and_rejects_unknown_dates(self):
