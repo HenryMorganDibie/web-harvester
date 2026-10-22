@@ -37,7 +37,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "configs/config.example.yaml", "path to YAML config")
-	mode := flag.String("mode", "", "override config mode: mock|live|provider|playwright|hybrid")
+	mode := flag.String("mode", "", "override config mode: mock|live|provider|tavily|playwright|hybrid")
 	queriesFlag := flag.String("queries", "", "comma-separated queries, overrides config")
 	iAcceptLiveRisk := flag.Bool("i-have-reviewed-tos", false, "required to run --mode live, playwright or hybrid")
 	flag.Parse()
@@ -161,6 +161,13 @@ func buildFetcherAndParser(cfg config.Config, iAcceptLiveRisk *bool, counters *m
 		f := fetcher.NewProviderFetcher(cfg.ProviderBaseURL, apiKey, cfg.ProviderEngine, cfg.RequestTimeout)
 		return f, parser.NewJSON()
 
+	case "tavily":
+		apiKey := os.Getenv(cfg.TavilyAPIKeyEnv)
+		if apiKey == "" {
+			log.Fatalf("tavily mode requires the %s environment variable to be set", cfg.TavilyAPIKeyEnv)
+		}
+		return fetcher.NewTavilyFetcher(apiKey, cfg.RequestTimeout), parser.NewTavily()
+
 	case "playwright", "hybrid":
 		if !*iAcceptLiveRisk {
 			fmt.Fprintln(os.Stderr, liveModeWarning)
@@ -190,7 +197,7 @@ func buildFetcherAndParser(cfg config.Config, iAcceptLiveRisk *bool, counters *m
 		}, parser.New()
 
 	default:
-		log.Fatalf("unknown mode %q (want mock|live|provider|playwright|hybrid)", cfg.Mode)
+		log.Fatalf("unknown mode %q (want mock|live|provider|tavily|playwright|hybrid)", cfg.Mode)
 		return nil, nil // unreachable
 	}
 }

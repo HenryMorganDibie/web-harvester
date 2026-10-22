@@ -8,6 +8,8 @@
 # -i-have-reviewed-tos on the command line.
 # "provider" calls a third-party SERP data API instead (see provider_* below
 # and the "Third-party provider fetcher" section in README.md).
+# "tavily" calls Tavily's native search API using TAVILY_API_KEY by default.
+# It does not change the SerpApi-compatible "provider" mode above.
 # "playwright" renders live_endpoint in headless Chromium and parses the
 # rendered HTML; it also requires -i-have-reviewed-tos and an installed
 # Chromium (`make playwright-install`). See README.md "Browser mode".
@@ -39,6 +41,10 @@ redis_seed_queue: false # true = push `queries` onto the stream before consuming
 provider_base_url: "" # e.g. "https://serpapi.com/search"
 provider_api_key_env: "SERPAPI_KEY"
 provider_engine: "google"
+
+# Used only when mode: tavily. The API key is read from this environment
+# variable, never stored in this file.
+tavily_api_key_env: "TAVILY_API_KEY"
 
 # Set to e.g. ":9090" to serve Prometheus metrics at /metrics for the
 # duration of the run. Empty disables it.

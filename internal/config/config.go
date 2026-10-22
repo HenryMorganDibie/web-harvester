@@ -74,6 +74,10 @@ type Config struct {
 	ProviderAPIKeyEnv string `yaml:"provider_api_key_env"`
 	ProviderEngine    string `yaml:"provider_engine"`
 
+	// Tavily is configured independently from the SerpApi-compatible provider.
+	// The key is read from the named environment variable, never YAML.
+	TavilyAPIKeyEnv string `yaml:"tavily_api_key_env"`
+
 	// Headless-browser settings, used when Mode is "playwright". That mode
 	// also uses LiveEndpoint, RequestTimeout (the per-fetch budget for
 	// navigation, the consent step and BrowserWaitSelector together), and
@@ -132,6 +136,7 @@ func Default() Config {
 		RequestTimeout:   10 * time.Second,
 		MockFixtureDir:   "internal/parser/testdata",
 		ProviderEngine:   "google",
+		TavilyAPIKeyEnv:  "TAVILY_API_KEY",
 		SinkBackend:      "jsonl",
 		PostgresDSNEnv:   "POSTGRES_DSN",
 		OutputPath:       "-", // stdout
