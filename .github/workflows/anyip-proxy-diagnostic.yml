@@ -191,6 +191,21 @@ jobs:
                           # Keep only URL origin/path; do not persist query parameters.
                           final = urlsplit(response.geturl())
                           safe_final_url = f"{final.scheme}://{final.netloc}{final.path[:160]}"
+                          html_without_scripts = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>", " ", body)
+                          visible_text = re.sub(r"(?s)<[^>]+>", " ", html_without_scripts)
+                          visible_text = re.sub(r"\s+", " ", visible_text).strip()
+                          import html as html_lib
+                          visible_text = html_lib.unescape(visible_text)[:240]
+                          tag_counts = {
+                              tag: len(re.findall(r"<\s*" + tag + r"\b", body, re.IGNORECASE))
+                              for tag in ("html", "body", "a", "div", "script", "form", "iframe", "h1")
+                          }
+                          signature_terms = (
+                              "enablejs", "enable javascript", "unusual traffic", "automated queries",
+                              "captcha", "consent", "before you continue", "python.org",
+                              "sorry/index", "our systems have detected"
+                          )
+                          signature_presence = {term: term in lower for term in signature_terms}
                           report["search_request"] = {
                               "status": "passed" if response.status == 200 and parsed_organic_like else ("blocked_or_challenge" if is_blocked else ("consent_page" if is_consent else "no_usable_results")),
                               "http_status": response.status,
@@ -199,6 +214,9 @@ jobs:
                               "content_type": response.headers.get("Content-Type", "").split(";")[0][:100] or None,
                               "bytes_inspected": len(raw_body),
                               "page_title": page_title,
+                              "visible_text_excerpt": visible_text,
+                              "html_tag_counts": tag_counts,
+                              "diagnostic_signature_presence": signature_presence,
                               "h1_headings": inspector.headings[:5],
                               "form_action_paths": inspector.form_actions[:5],
                               "robots_meta": inspector.meta_robots[:5],
