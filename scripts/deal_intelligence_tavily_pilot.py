@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -43,7 +43,11 @@ def normalize_url(url: str) -> str:
         if p.port and not ((p.scheme == "http" and p.port == 80) or (p.scheme == "https" and p.port == 443)):
             host += f":{p.port}"
         path = re.sub(r"/{2,}", "/", p.path or "/")
-        return urlunparse((p.scheme.lower(), host, path.rstrip("/") or "/", p.query, ""))
+        query = urlencode([
+            (k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+            if not k.lower().startswith("utm_") and k.lower() not in {"fbclid", "gclid", "mc_cid", "mc_eid"}
+        ])
+        return urlunparse((p.scheme.lower(), host, path.rstrip("/") or "/", query, ""))
     except (TypeError, ValueError):
         return ""
 
@@ -241,6 +245,8 @@ def fetch_database(api_base: str, client: httpx.Client, page_size: int = 100) ->
             raise RuntimeError("Production deals API returned an unexpected schema; refusing to continue.")
         if expected_total is None:
             expected_total = total
+            if expected_total == 0:
+                raise RuntimeError("Production deals API returned zero records; refusing to treat an empty snapshot as complete.")
         elif total != expected_total:
             raise RuntimeError("Production deal count changed during pagination; rerun to avoid partial deduplication.")
         if not rows and offset < expected_total:
