@@ -6,12 +6,13 @@ on:
       max_pages:
         description: "Maximum recent source pages fetched through anyIP"
         required: true
-        default: "10"
+        default: "30"
         type: choice
         options:
           - "5"
           - "10"
           - "15"
+          - "30"
       freshness_days:
         description: "Only consider publisher pages from the last N days"
         required: true
@@ -32,7 +33,7 @@ concurrency:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out Web Harvester
         uses: actions/checkout@v4
@@ -78,7 +79,7 @@ jobs:
           set -euo pipefail
           python scripts/deal_intelligence_tavily_pilot.py \
             --deal-intel-root "$GITHUB_WORKSPACE/deal-intelligence" \
-            --max-pages "${{ inputs.max_pages || '15' }}" \
+            --max-pages "${{ inputs.max_pages || '30' }}" \
             --freshness-days "${{ inputs.freshness_days || '30' }}" \
             --output "$RUNNER_TEMP/deal-intelligence-discovery.json"
           python - "$RUNNER_TEMP/deal-intelligence-discovery.json" <<'PY'
