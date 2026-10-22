@@ -1043,14 +1043,15 @@ client's volume, not just a pitch:
    extraction return it as structured JSON already (see
    `internal/parser/json_provider.go`).
 
-3. **No CAPTCHA handling or anti-detection measures are implemented** for
-   either direct-to-Google mode (`live` or `playwright`). A real browser is
-   still challenged; browser mode reports those pages as blocked and stops. At real volume, direct-to-Google request
-   patterns get challenged. Solving that (compliant CAPTCHA-handling,
-   residential proxy rotation, request fingerprint normalization) is scoped,
-   budgeted, engagement-specific work if going direct — the
-   [third-party provider fetcher](#third-party-provider-fetcher) is the
-   honest way this actually gets closed for a real client instead.
+3. **No CAPTCHA solving or anti-detection/evasion measures are implemented**
+   for either direct-to-Google mode (`live` or `playwright`). A real browser
+   can still be challenged; browser mode reports those pages as blocked and
+   stops. The live tests recorded CAPTCHA and JavaScript-check responses
+   rather than search results, so direct Google collection is not currently a
+   dependable path with this implementation. Proxy rotation and adaptive
+   throttling are resilience mechanisms, not a guarantee of access and not a
+   way to defeat access controls. For dependable Google results, use the
+   [third-party provider fetcher](#third-party-provider-fetcher).
 
 4. **The resilience logic is tuned against fixtures, not live traffic.**
    Cooldown lengths, throttling steps and block markers are reasoned
