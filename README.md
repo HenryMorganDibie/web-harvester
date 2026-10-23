@@ -62,9 +62,11 @@ proxies, no network access required.
 - **Job submission**: an HTTP API (`cmd/api`) for `POST /jobs` +
   `GET /jobs/{run_id}`, plus real cron-based scheduled harvesting — both as
   pure queue producers — see [Job/API layer](#jobapi-layer).
-- **Measured capacity**: see [Load testing](#load-testing) below for actual
-  numbers (orchestration throughput and the latest soak test), not
-  projections.
+- **Capacity targets**: plan for **1 million queries/day at initial
+  launch**, with a scale target of **10 million queries/day**. These are
+  engineering targets, not a claim that live third-party acquisition has
+  already been validated at those volumes. See [Load testing](#load-testing)
+  for measured orchestration results and their limits.
 - **Production history**: none yet — this is a new build. See
   [CAPABILITIES.md](CAPABILITIES.md) for the direct, no-spin answer to that
   question and the other four this project needs to answer.
@@ -123,12 +125,12 @@ Proxy-provider benchmarks are evaluated and reported separately. They measure pr
 
 ## Third-party deal-discovery integration pilot
 
-On 22 October 2026, Web Harvester completed a bounded integration run for
-[Deal Intelligence](https://deal-intelligence-app.vercel.app) using an external
-search provider and the configured proxy for source-page acquisition. The
-workflow completed successfully, including offline regression tests, credential
-validation, search, page fetching, comparison with the live canonical dataset,
-and review-artifact upload.
+On 22 October 2026, Web Harvester completed a successful third-party
+integration run for [Deal Intelligence](https://deal-intelligence-app.vercel.app).
+The workflow passed its offline regression tests, validated its configuration,
+ran external search, fetched source pages through the configured acquisition
+path, compared the results with the live canonical dataset, and uploaded a
+review artifact.
 
 | Measure | Observed result |
 |---|---:|
@@ -148,9 +150,10 @@ regression checks passed, and a review artifact was generated. The run was
 review-only and made no production database writes.
 
 This is a bounded integration validation, not a claim of comprehensive market
-coverage or analyst-verified deal discovery. It demonstrates the working
-provider-to-acquisition-to-comparison workflow while leaving candidate-level
-quality review as a separate evaluation step.
+coverage or analyst-verified deal discovery. It verifies that the third-party
+search-to-acquisition-to-dataset-comparison workflow runs end to end. Human
+review of candidate quality remains a separate step; no candidate-count metric
+is presented here as a measure of success.
 
 [View the successful GitHub Actions run and review artifact](https://github.com/HenryMorganDibie/web-harvester/actions/runs/39872441752).
 
@@ -161,14 +164,15 @@ do when a metric looks wrong) · [deploy/](deploy/) (Docker Compose / systemd).
 
 ## Why this exists
 
-This is the engineering foundation for a Google SERP / AI Overviews
-collection engagement at 10M+ requests/day: the queueing, concurrency,
-proxy rotation, rate limiting, structured extraction, and observability a
-production pipeline is built on. It is not itself a working large-scale
-Google scraper today — see [Honest limitations](#honest-limitations) for
-exactly what's built versus what real production volume against Google
-still requires, and why that line is drawn deliberately rather than glossed
-over.
+The operating target is **1 million queries/day at initial launch**,
+scaling toward **10 million queries/day** as deployment capacity grows. The
+queueing, concurrency, proxy rotation, rate limiting, structured extraction,
+and observability are the foundation for that scale. These are target volumes,
+not a claim that live Google collection has already been load-tested at those
+levels. Real throughput depends on deployment size, provider limits, proxy
+capacity, target-site policies and the workload. See
+[Honest limitations](#honest-limitations) for what is built and what still
+needs validation at production volume.
 
 ## Quickstart
 
