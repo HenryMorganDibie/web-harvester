@@ -1051,9 +1051,8 @@ client's volume, not just a pitch:
    8/8 queries completed, 74 unique result URLs were collected, 22/30 source
    pages were fetched, and results were compared with 4,506 existing Deal
    Intelligence records to generate a review artifact. This was review-only and
-   made no production database writes. This pilot was not designed to quantify
-   incremental new-deal yield, so it should not be read as evidence for or against
-   finding new deals; candidate verification and broader coverage need evaluation. Proxy rotation and adaptive throttling are
+   made no production database writes. This pilot validated the integration workflow rather than measuring net-new deal yield.
+   Candidate verification and broader coverage can be evaluated in follow-up runs. Proxy rotation and adaptive throttling are
    resilience mechanisms, not a guarantee of access and not a way to defeat
    access controls.
 
