@@ -202,16 +202,26 @@ metrics this codebase actually emits.
 
 ## 17. Known limitations
 
-The full, honest list is in [README "Honest limitations"](README.md#honest-limitations)
-and is intentionally not duplicated here. In short: direct-to-Google fetching
-over plain HTTP is confirmed blocked at the consent/JS-check layer; headless
-rendering (`mode: playwright`, `mode: hybrid`) and the adaptive throttling,
-cooldown and failover logic exist but are unverified against live Google,
-and there is no CAPTCHA handling or evasion on any direct path (a deliberate
-scope boundary, not an oversight);
-the provider fetch path is the one built for real volume; and no number in
-this repository claims a production operating history that doesn't exist —
-see the "Production history" note in the README's top summary.
+The full list is in [README "Honest limitations"](README.md#honest-limitations).
+Direct-to-Google fetching remains unreliable: live requests returned
+JavaScript checks and CAPTCHA challenges, which are classified and stopped;
+CAPTCHA solving and anti-detection bypass are deliberately out of scope.
+The third-party provider path has moved beyond fixture-only verification: a
+bounded live integration run on 22 October 2026 completed 8/8 queries, fetched
+22/30 attempted source pages through the configured proxy, compared results
+with 4,506 existing Deal Intelligence records and generated a review artifact.
+That is integration evidence, not production history or sustained-volume proof;
+the run was review-only and made no production database writes.
+
+The anyIP proxy benchmark also recorded live, workload-specific results:
+residential state targeting matched 98.2%, mobile state targeting matched
+85.8%, rotating sessions returned 97.9% usable responses, and sticky sessions
+renewed every 15 requests returned 100% usable responses on the tested
+protected-page workload. Long-lived sticky sessions performed materially worse,
+and mobile IP geolocation does not guarantee physical state. See the README
+benchmark tables and runbook for methodology and caveats. No number in this
+repository claims sustained production operating history; see the README's
+top summary.
 
 ## 18. Job submission API
 
