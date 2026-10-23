@@ -1046,17 +1046,29 @@ client's volume, not just a pitch:
 3. **Direct Google collection was tested, but did not return usable results.**
    Live requests returned JavaScript checks and CAPTCHA challenges; browser
    mode reports those pages as blocked and stops. No CAPTCHA solving or
-   anti-detection/evasion measures are implemented. Reliable search collection
-   was subsequently validated through the
-   [third-party provider fetcher](#third-party-provider-fetcher). Proxy
-   rotation and adaptive throttling are resilience mechanisms, not a guarantee
-   of access and not a way to defeat access controls.
+   anti-detection/evasion measures are implemented. A separate live integration
+   pilot subsequently validated the third-party search-provider path end to end:
+   8/8 queries completed, 74 unique result URLs were collected, 22/30 source
+   pages were fetched, and results were compared with 4,506 existing Deal
+   Intelligence records to generate a review artifact. This was review-only and
+   made no production database writes; candidate quality and incremental new-deal
+   yield still require review. Proxy rotation and adaptive throttling are
+   resilience mechanisms, not a guarantee of access and not a way to defeat
+   access controls.
 
-4. **The resilience logic is tuned against fixtures, not live traffic.**
-   Cooldown lengths, throttling steps and block markers are reasoned
-   defaults and are tested against scripted local responses. How Google
-   actually rate-limits and challenges a given egress, and whether these
-   reactions keep a real proxy pool productive, has not been measured.
+4. **Resilience and proxy behaviour have real-network measurements, but are workload-specific.**
+   The 19–20 October 2026 US proxy benchmark measured 98.2% state-target
+   geolocation for residential exits (1,502/1,530), 85.8% for mobile exits
+   (1,312/1,530), 97.9% usable responses with rotating sessions (1,175/1,200),
+   and 600/600 usable responses when sticky sessions were renewed every 15
+   requests. Renewed sticky sessions were 100–230 ms faster across six
+   comparisons. A single long-lived sticky session degraded to 16–49 usable
+   responses per 100-request run before target-side 4xx responses. These are
+   measured outcomes for the tested pools, target, locations and dates, not
+   universal provider guarantees. Mobile IP geolocation is not a reliable
+   proxy for a device's physical state, and long-lived sticky sessions can
+   still be blocked. The benchmark measures observed behaviour; it does not
+   establish that the same cooldowns or rates will work on every target.
 
 5. **Google's Terms of Service restrict automated querying.** Whether and
    how to operate at volume against Google directly (vs. via a licensed
