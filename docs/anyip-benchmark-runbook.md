@@ -130,4 +130,6 @@ Differences smaller than the overlap of two intervals are not findings.
 
 ## Evidence status
 
-The repository implements proxy rotation, health tracking, cooldowns, `Retry-After` handling and worker retries, and `proxybench` implements the measurements above with offline tests against a scripted proxy. No live provider measurement has been recorded in this repository.
+**Live anyIP measurements were completed on 19–20 October 2026.** The recorded US benchmark measured residential state-targeting matches at 1,502/1,530 (98.2%) and mobile matches at 1,312/1,530 (85.8%); the mobile result needs caution because carrier routing and IP-geolocation databases do not establish a device's physical state. On the protected-page workload, rotating sessions returned 1,175/1,200 usable responses (97.9%), while sticky sessions renewed every 15 requests returned 600/600 (100%). Renewed sticky sessions were 100–230 ms faster across six comparisons. Single long-lived sticky sessions returned only 16–49 usable responses per 100-request run before target-side 4xx responses.
+
+These are observed results for the tested pools, target, request pattern, geolocation source and dates. They do not guarantee the same performance on other targets or future runs. The results also do not establish mobile device location, universal sticky-session reliability, or production-scale performance. The benchmark's methodology remains useful for rerunning the same comparisons and measuring retries, failure recovery and billed bytes under a new workload.
