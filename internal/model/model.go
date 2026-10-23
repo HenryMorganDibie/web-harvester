@@ -6,6 +6,10 @@ import "time"
 // SerpResult is the structured output produced for one query.
 type SerpResult struct {
 	Query           string           `json:"query"`
+	FinalURL        string           `json:"final_url,omitempty"`
+	SearchTerms     []string         `json:"search_terms,omitempty"`
+	SourceCards     []SourceCard     `json:"source_cards,omitempty"`
+	ExpandableTexts []string         `json:"expandable_texts,omitempty"`
 	RunID           string           `json:"run_id,omitempty"`
 	Locale          string           `json:"locale,omitempty"`
 	Device          string           `json:"device,omitempty"`
@@ -56,4 +60,11 @@ type AIOverview struct {
 type CalibrationNote struct {
 	MissingBlocks []string `json:"missing_blocks"`
 	RawHTMLPath   string   `json:"raw_html_path,omitempty"`
+}
+
+// SourceCard captures visible source-card metadata when available.
+type SourceCard struct {
+	Title       string `json:"title,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Description string `json:"description,omitempty"`
 }

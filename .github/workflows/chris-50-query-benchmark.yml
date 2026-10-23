@@ -1,6 +1,12 @@
 name: Chris 50-Query Search Benchmark
 
 on:
+  push:
+    paths:
+      - ".github/workflows/chris-50-query-benchmark.yml"
+      - "internal/model/model.go"
+      - "internal/parser/parser.go"
+      - "internal/worker/pool.go"
   workflow_dispatch:
 
 permissions:
@@ -236,6 +242,9 @@ jobs:
                 **q, "status": "failed", "http_status": http_status,
                 "fetch_latency_ms": "", "organic_result_count": 0,
                 "featured_snippet": False, "ai_overview": False,
+                "ai_overview_text": "", "citations_json": "[]",
+                "final_url": "", "search_terms": "",
+                "source_card_descriptions": "[]", "expandable_texts": "[]",
                 "error_note": (
                   "Provider HTTP status captured from the worker error."
                   if match else
@@ -251,6 +260,12 @@ jobs:
               "organic_result_count": len(organic),
               "featured_snippet": bool(raw.get("featured_snippet")),
               "ai_overview": bool(raw.get("ai_overview")),
+              "ai_overview_text": (raw.get("ai_overview") or {}).get("text", ""),
+              "citations_json": json.dumps((raw.get("ai_overview") or {}).get("sources", []), ensure_ascii=False),
+              "final_url": raw.get("final_url", ""),
+              "search_terms": " ".join(raw.get("search_terms") or []),
+              "source_card_descriptions": json.dumps([c for c in (raw.get("source_cards") or []) if c.get("description")], ensure_ascii=False),
+              "expandable_texts": json.dumps(raw.get("expandable_texts") or [], ensure_ascii=False),
               "error_note": "",
             })
             # Keep the actual parsed result payload but remove runtime/proxy metadata
@@ -266,7 +281,9 @@ jobs:
           with open(csv_path, "w", newline="", encoding="utf-8") as f:
             fields = ["id", "category", "query", "status", "http_status",
                       "fetch_latency_ms", "organic_result_count", "featured_snippet",
-                      "ai_overview", "error_note"]
+                      "ai_overview", "ai_overview_text", "citations_json",
+                      "final_url", "search_terms", "source_card_descriptions",
+                      "expandable_texts", "error_note"]
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()
             writer.writerows(records)

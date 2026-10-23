@@ -38,12 +38,35 @@ func (p *Parser) Parse(query string, html []byte) (*model.SerpResult, error) {
 	result := &model.SerpResult{Query: query}
 	var missing []string
 
+	// Keep requested terms, or use the actual query shown in the search input.
+	result.SearchTerms = strings.Fields(query)
+	if q, ok := doc.Find(`input[name="q"]`).Attr("value"); ok && strings.TrimSpace(q) != "" {
+		result.SearchTerms = strings.Fields(strings.TrimSpace(q))
+	}
+
+	// Capture source cards and visible disclosure text when selectors are present.
+	doc.Find(".source-card, [data-source-card], .ai-overview-source, .MjjYud").Each(func(_ int, s *goquery.Selection) {
+		a := s.Find("a").First()
+		title := strings.TrimSpace(a.Text())
+		href, _ := a.Attr("href")
+		desc := strings.TrimSpace(s.Find(".VwiC3b, .description, [data-sncf], .snippet").First().Text())
+		if title != "" || href != "" || desc != "" {
+			result.SourceCards = append(result.SourceCards, model.SourceCard{Title: title, URL: href, Description: desc})
+		}
+	})
+	doc.Find("[aria-expanded='true'], [data-expanded='true'], details[open]").Each(func(_ int, s *goquery.Selection) {
+		t := strings.TrimSpace(s.Text())
+		if t != "" { result.ExpandableTexts = append(result.ExpandableTexts, t) }
+	})
+
 	if ov := doc.Find(".serp-ai-overview"); ov.Length() > 0 {
 		text := strings.TrimSpace(ov.Find(".ai-overview-text").Text())
 		var sources []string
 		ov.Find(".ai-overview-sources a").Each(func(_ int, s *goquery.Selection) {
 			if href, ok := s.Attr("href"); ok && href != "" {
 				sources = append(sources, href)
+				title := strings.TrimSpace(s.Text())
+				if title != "" { result.SourceCards = append(result.SourceCards, model.SourceCard{Title: title, URL: href}) }
 			}
 		})
 		result.AIOverview = &model.AIOverview{Text: text, Sources: sources}

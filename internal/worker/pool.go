@@ -117,6 +117,7 @@ func (p *Pool) process(ctx context.Context, job queue.Job) {
 			return err
 		}
 		r.LatencyMS = resp.Latency.Milliseconds()
+		r.FinalURL = resp.FinalURL
 		r.ProxyUsed = px.DisplayID()
 		r.FetchedAt = time.Now().UTC()
 		r.RunID = job.RunID
