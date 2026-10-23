@@ -87,11 +87,15 @@ correctly to rate limits and blocks, not that it avoids or survives them at
 any particular volume. See
 [README "Acquisition resilience"](README.md#acquisition-resilience).
 
-**Recommended path for real volume:** the provider fetch path. It's fully
-built and unit-tested against a realistic fixture and a local `httptest`
-server; the one thing not yet verified is a real vendor's exact field names
-(`tests/live/provider_test.go` is ready to confirm this the moment a trial
-key exists).
+**Recommended path for real volume:** the provider fetch path. The
+third-party integration was subsequently validated in a live bounded run on
+22 October 2026: all 8 search queries completed, 74 unique result URLs were
+collected, 22 of 30 source pages were fetched through the configured proxy,
+and the output was compared with Deal Intelligence's existing dataset to
+generate a review artifact. This confirms the provider-to-acquisition
+integration beyond fixture-only testing. It does not establish sustained
+production throughput, comprehensive market coverage or analyst-verified
+incremental deal yield; the run made no production database writes.
 
 ## What sustained daily volume have you handled, particularly for Google, and over what period?
 
