@@ -94,8 +94,9 @@ collected, 22 of 30 source pages were fetched through the configured proxy,
 and the output was compared with Deal Intelligence's existing dataset to
 generate a review artifact. This confirms the provider-to-acquisition
 integration beyond fixture-only testing. It does not establish sustained
-production throughput, comprehensive market coverage or analyst-verified
-incremental deal yield; the run made no production database writes.
+production throughput or comprehensive market coverage. The pilot was not designed to
+quantify incremental new-deal yield, so it is not evidence for or against finding new deals;
+the run made no production database writes.
 
 ## What sustained daily volume have you handled, particularly for Google, and over what period?
 
