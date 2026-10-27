@@ -1,12 +1,10 @@
 name: Chris 50-Query Search Benchmark
 
+# Manual only. This benchmark fetches Google directly through a live proxy,
+# so its outcome depends on Google's bot protection on the day, not on the
+# code under test. Running it on push turned every parser or worker change
+# red whenever Google served an interstitial. Code changes are covered by ci.
 on:
-  push:
-    paths:
-      - ".github/workflows/chris-50-query-benchmark.yml"
-      - "internal/model/model.go"
-      - "internal/parser/parser.go"
-      - "internal/worker/pool.go"
   workflow_dispatch:
 
 permissions:
